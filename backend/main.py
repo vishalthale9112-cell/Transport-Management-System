@@ -142,3 +142,15 @@ def create_order(order: schemas.OrderCreate, db: Session = Depends(get_db)):
 @app.get("/api/alerts", response_model=list[schemas.AlertOut])
 def list_alerts(db: Session = Depends(get_db)):
     return db.query(models.Alert).order_by(models.Alert.id.desc()).all()
+@app.get("/api/trips", response_model=list[schemas.TripOut])
+def list_trips(db: Session = Depends(get_db)):
+    return db.query(models.Trip).all()
+
+
+@app.post("/api/trips", response_model=schemas.TripOut)
+def create_trip(trip: schemas.TripCreate, db: Session = Depends(get_db)):
+    t = models.Trip(**trip.model_dump())
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t

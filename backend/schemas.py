@@ -104,3 +104,21 @@ class DashboardStats(BaseModel):
     fuel_breakdown: dict
     cost_per_km: dict
     alerts: list[AlertOut]
+class TripOut(BaseModel):
+    id: int
+    vehicle_id: int
+    origin: str
+    destination: str
+    progress: int
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class TripCreate(BaseModel):
+    vehicle_id: int
+    origin: str
+    destination: str
+    progress: int = 0
+    status: str = "Ongoing"
