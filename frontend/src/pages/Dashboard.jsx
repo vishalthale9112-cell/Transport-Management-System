@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { AlertTriangle, Bell, Info } from "lucide-react";
 import { getDashboard, getVehicles } from "../api";
-import FleetMap from "../components/FleetMap";
+import RealMap from "../components/RealMap";
 
 const FUEL_COLORS = { Diesel: "#0b1e33", Petrol: "#1abc9c", CNG: "#f5a623" };
 const SEVERITY_STYLE = {
@@ -108,7 +108,9 @@ export default function Dashboard() {
       <div className="grid-2">
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div className="card-title" style={{ padding: "16px 20px 0" }}>Live GPS Fleet Map</div>
-          <FleetMap vehicles={vehicles} />
+          <div style={{ margin: "14px 20px 20px" }}>
+            <RealMap vehicles={vehicles} height={300} />
+          </div>
         </div>
 
         <div className="card">
