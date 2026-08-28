@@ -14,4 +14,5 @@ export const getDrivers = () => api.get("/drivers").then((r) => r.data);
 export const createDriver = (data) => api.post("/drivers", data).then((r) => r.data);
 export const deleteDriver = (id) => api.delete(`/drivers/${id}`).then((r) => r.data);
 export const getOrders = () => api.get("/orders").then((r) => r.data);
+export const createOrder = (data) => api.post("/orders", data).then((r) => r.data);
 export const getAlerts = () => api.get("/alerts").then((r) => r.data);

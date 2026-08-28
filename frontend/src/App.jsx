@@ -4,10 +4,10 @@ import Topbar from "./components/Topbar";
 import Dashboard from "./pages/Dashboard";
 import Vehicles from "./pages/Vehicles";
 import Drivers from "./pages/Drivers";
+import Orders from "./pages/Orders";
 import Placeholder from "./pages/Placeholder";
 
 const placeholders = [
-  ["/orders", "Orders"],
   ["/trips", "Trips"],
   ["/tracking", "Live Tracking"],
   ["/fuel", "Fuel Management"],
@@ -33,6 +33,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/drivers" element={<Drivers />} />
+            <Route path="/orders" element={<Orders />} />
             {placeholders.map(([path, title]) => (
               <Route key={path} path={path} element={<Placeholder title={title} />} />
             ))}
