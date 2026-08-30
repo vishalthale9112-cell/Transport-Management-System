@@ -545,6 +545,113 @@ def delete_trip(
         "message": "Trip deleted successfully"
     }
 
+# =========================================================
+# FUEL LOGS
+# =========================================================
+
+@app.get(
+    "/api/fuel-logs",
+    response_model=list[schemas.FuelLogOut]
+)
+def list_fuel_logs(
+    vehicle_id: int | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.FuelLog)
+
+    if vehicle_id is not None:
+        query = query.filter(
+            models.FuelLog.vehicle_id == vehicle_id
+        )
+
+    return query.order_by(models.FuelLog.id.desc()).all()
+
+
+@app.post(
+    "/api/fuel-logs",
+    response_model=schemas.FuelLogOut,
+    status_code=201
+)
+def create_fuel_log(
+    fuel: schemas.FuelLogCreate,
+    db: Session = Depends(get_db)
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(models.Vehicle.id == fuel.vehicle_id)
+        .first()
+    )
+
+    if not vehicle:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found"
+        )
+
+    if fuel.liters <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Liters must be greater than 0"
+        )
+
+    if fuel.price_per_liter <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Price per liter must be greater than 0"
+        )
+
+    total_cost = round(
+        fuel.liters * fuel.price_per_liter,
+        2
+    )
+
+    new_fuel_log = models.FuelLog(
+        vehicle_id=fuel.vehicle_id,
+        fuel_type=fuel.fuel_type.strip() or "Diesel",
+        liters=fuel.liters,
+        price_per_liter=fuel.price_per_liter,
+        total_cost=total_cost,
+        odometer=fuel.odometer,
+        station_name=(
+            fuel.station_name.strip()
+            if fuel.station_name
+            else ""
+        ),
+        date=fuel.date
+    )
+
+    db.add(new_fuel_log)
+    db.commit()
+    db.refresh(new_fuel_log)
+
+    return new_fuel_log
+
+
+@app.delete("/api/fuel-logs/{fuel_log_id}")
+def delete_fuel_log(
+    fuel_log_id: int,
+    db: Session = Depends(get_db)
+):
+    fuel_log = (
+        db.query(models.FuelLog)
+        .filter(models.FuelLog.id == fuel_log_id)
+        .first()
+    )
+
+    if not fuel_log:
+        raise HTTPException(
+            status_code=404,
+            detail="Fuel record not found"
+        )
+
+    db.delete(fuel_log)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Fuel record deleted successfully"
+    }
+
 
 # =========================================================
 # ALERTS
