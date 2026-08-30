@@ -7,10 +7,10 @@ import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Trips from "./pages/Trips";
 import LiveTracking from "./pages/LiveTracking";
+import FuelManagement from "./pages/FuelManagement";
 import Placeholder from "./pages/Placeholder";
 
 const placeholders = [
-  ["/fuel", "Fuel Management"],
   ["/maintenance", "Maintenance"],
   ["/customers", "Customers"],
   ["/income", "Income"],
@@ -36,6 +36,7 @@ export default function App() {
             <Route path="/orders" element={<Orders />} />
             <Route path="/trips" element={<Trips />} />
             <Route path="/tracking" element={<LiveTracking />} />
+            <Route path="/fuel" element={<FuelManagement />} />
             {placeholders.map(([path, title]) => (
               <Route key={path} path={path} element={<Placeholder title={title} />} />
             ))}

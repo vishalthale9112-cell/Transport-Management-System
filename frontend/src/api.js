@@ -22,3 +22,6 @@ export const deleteTrip = async (id) => {
   const response = await api.delete(`/api/trips/${id}`);
   return response.data;
 };
+export const getFuelLogs = (vehicleId = null) =>
+  api.get(`/fuel-logs${vehicleId ? `?vehicle_id=${vehicleId}` : ""}`).then((r) => r.data);
+export const createFuelLog = (data) => api.post("/fuel-logs", data).then((r) => r.data);
