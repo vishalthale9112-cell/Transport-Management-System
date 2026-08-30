@@ -18,6 +18,7 @@ export const createOrder = (data) => api.post("/orders", data).then((r) => r.dat
 export const getAlerts = () => api.get("/alerts").then((r) => r.data);
 export const getTrips = () => api.get("/trips").then((r) => r.data);
 export const createTrip = (data) => api.post("/trips", data).then((r) => r.data);
+export const deleteOrder = (id) => api.delete(`/orders/${id}`).then((r) => r.data);
 export const deleteTrip = async (id) => {
   const response = await api.delete(`/api/trips/${id}`);
   return response.data;

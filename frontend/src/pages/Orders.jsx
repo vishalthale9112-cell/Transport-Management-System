@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
-import { getOrders, createOrder } from "../api";
+import { Plus, Trash2 } from "lucide-react";
+import { getOrders, createOrder, deleteOrder } from "../api";
 
 const statusColors = {
   New: "status-active",
@@ -24,6 +24,11 @@ export default function Orders() {
     await createOrder({ ...form, amount: Number(form.amount) });
     setForm({ order_code: "", customer_name: "", amount: 0 });
     setShowForm(false);
+    load();
+  };
+
+  const handleDelete = async (id) => {
+    await deleteOrder(id);
     load();
   };
 
@@ -70,6 +75,7 @@ export default function Orders() {
               <th>Status</th>
               <th>Amount</th>
               <th>Date</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -80,10 +86,15 @@ export default function Orders() {
                 <td><span className={`status-pill ${statusColors[o.status] || ""}`}>{o.status}</span></td>
                 <td>₹{o.amount.toLocaleString("en-IN")}</td>
                 <td>{o.created_at || "—"}</td>
+                <td>
+                  <button className="btn-sm" onClick={() => handleDelete(o.id)}>
+                    <Trash2 size={13} />
+                  </button>
+                </td>
               </tr>
             ))}
             {orders.length === 0 && (
-              <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--text-500)", padding: 24 }}>No orders yet</td></tr>
+              <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-500)", padding: 24 }}>No orders yet</td></tr>
             )}
           </tbody>
         </table>
