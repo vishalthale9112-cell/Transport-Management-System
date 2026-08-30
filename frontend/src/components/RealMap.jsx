@@ -632,7 +632,6 @@ export default function RealMap({
           </Marker>
         )}
 
-
         {/* BLUE ROUTE */}
 
         {roadPath &&
