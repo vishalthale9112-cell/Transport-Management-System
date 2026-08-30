@@ -1,16 +1,17 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
+
 import Dashboard from "./pages/Dashboard";
 import Vehicles from "./pages/Vehicles";
 import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Trips from "./pages/Trips";
 import LiveTracking from "./pages/LiveTracking";
+import FuelManagement from "./pages/FuelManagement";
 import Placeholder from "./pages/Placeholder";
 
 const placeholders = [
-  ["/fuel", "Fuel Management"],
   ["/maintenance", "Maintenance"],
   ["/customers", "Customers"],
   ["/income", "Income"],
@@ -27,17 +28,34 @@ export default function App() {
     <BrowserRouter>
       <div className="app-shell">
         <Sidebar />
+
         <div className="main-col">
           <Topbar />
+
           <Routes>
             <Route path="/" element={<Dashboard />} />
+
             <Route path="/vehicles" element={<Vehicles />} />
+
             <Route path="/drivers" element={<Drivers />} />
+
             <Route path="/orders" element={<Orders />} />
+
             <Route path="/trips" element={<Trips />} />
+
             <Route path="/tracking" element={<LiveTracking />} />
+
+            <Route
+              path="/fuel"
+              element={<FuelManagement />}
+            />
+
             {placeholders.map(([path, title]) => (
-              <Route key={path} path={path} element={<Placeholder title={title} />} />
+              <Route
+                key={path}
+                path={path}
+                element={<Placeholder title={title} />}
+              />
             ))}
           </Routes>
         </div>
