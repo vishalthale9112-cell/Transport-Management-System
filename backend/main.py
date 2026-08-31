@@ -390,6 +390,14 @@ def create_order(
     db.refresh(new_order)
 
     return new_order
+@app.delete("/api/orders/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    db.delete(order)
+    db.commit()
+    return {"ok": True, "message": "Order deleted"}
 
 
 # =========================================================
@@ -672,3 +680,37 @@ def list_alerts(
         )
         .all()
     )
+@app.get("/api/maintenance", response_model=list[schemas.MaintenanceRecordOut])
+def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_db)):
+    query = db.query(models.MaintenanceRecord)
+    if vehicle_id is not None:
+        query = query.filter(models.MaintenanceRecord.vehicle_id == vehicle_id)
+    return query.order_by(models.MaintenanceRecord.id.desc()).all()
+
+
+@app.post("/api/maintenance", response_model=schemas.MaintenanceRecordOut, status_code=201)
+def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = Depends(get_db)):
+    from datetime import date as date_type
+
+    vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == record.vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    new_record = models.MaintenanceRecord(
+        **record.model_dump(),
+        date=date_type.today(),
+    )
+    db.add(new_record)
+    db.commit()
+    db.refresh(new_record)
+    return new_record
+
+
+@app.delete("/api/maintenance/{record_id}")
+def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.MaintenanceRecord).filter(models.MaintenanceRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Maintenance record not found")
+    db.delete(record)
+    db.commit()
+    return {"ok": True, "message": "Maintenance record deleted"}

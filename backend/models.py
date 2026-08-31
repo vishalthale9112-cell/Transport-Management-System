@@ -117,3 +117,17 @@ class FuelLog(Base):
     )
 
     vehicle = relationship("Vehicle")
+
+class MaintenanceRecord(Base):
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    service_type = Column(String, nullable=False)
+    brand = Column(String, default="")
+    driver_name = Column(String, default="")
+    cost = Column(Float, default=0)
+    next_due_days = Column(Integer, default=30)
+    date = Column(Date, nullable=False)
+
+    vehicle = relationship("Vehicle")

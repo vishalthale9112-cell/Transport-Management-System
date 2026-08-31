@@ -198,3 +198,25 @@ class FuelLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MaintenanceRecordCreate(BaseModel):
+    vehicle_id: int
+    service_type: str
+    brand: Optional[str] = ""
+    driver_name: Optional[str] = ""
+    cost: float = 0
+    next_due_days: int = 30
+
+
+class MaintenanceRecordOut(BaseModel):
+    id: int
+    vehicle_id: int
+    service_type: str
+    brand: Optional[str] = ""
+    driver_name: Optional[str] = ""
+    cost: float
+    next_due_days: int
+    date: date
+
+    class Config:
+        from_attributes = True
