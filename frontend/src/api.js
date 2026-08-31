@@ -62,3 +62,7 @@ export const getFuelLogs = (vehicleId = null) =>
 
 export const createFuelLog = (data) =>
   api.post("/fuel-logs", data).then((r) => r.data);
+export const getMaintenance = (vehicleId = null) =>
+  api.get(`/maintenance${vehicleId ? `?vehicle_id=${vehicleId}` : ""}`).then((r) => r.data);
+export const createMaintenance = (data) => api.post("/maintenance", data).then((r) => r.data);
+export const deleteMaintenance = (id) => api.delete(`/maintenance/${id}`).then((r) => r.data);
