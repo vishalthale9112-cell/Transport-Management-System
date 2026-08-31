@@ -71,3 +71,63 @@ class Alert(Base):
     title = Column(String, nullable=False)
     severity = Column(String, default="info")  # info, warning, critical
     minutes_ago = Column(Integer, default=0)
+
+class FuelLog(Base):
+    __tablename__ = "fuel_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=False
+    )
+
+    fuel_type = Column(
+        String,
+        default="Diesel",
+        nullable=False
+    )
+
+    liters = Column(Float, nullable=False)
+
+    price_per_liter = Column(
+        Float,
+        nullable=False
+    )
+
+    total_cost = Column(
+        Float,
+        nullable=False
+    )
+
+    odometer = Column(
+        Integer,
+        default=0
+    )
+
+    station_name = Column(
+        String,
+        default=""
+    )
+
+    date = Column(
+        Date,
+        nullable=False
+    )
+
+    vehicle = relationship("Vehicle")
+
+class MaintenanceRecord(Base):
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    service_type = Column(String, nullable=False)
+    brand = Column(String, default="")
+    driver_name = Column(String, default="")
+    cost = Column(Float, default=0)
+    next_due_days = Column(Integer, default=30)
+    date = Column(Date, nullable=False)
+
+    vehicle = relationship("Vehicle")

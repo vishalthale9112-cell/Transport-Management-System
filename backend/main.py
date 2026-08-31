@@ -390,6 +390,14 @@ def create_order(
     db.refresh(new_order)
 
     return new_order
+@app.delete("/api/orders/{order_id}")
+def delete_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    db.delete(order)
+    db.commit()
+    return {"ok": True, "message": "Order deleted"}
 
 
 # =========================================================
@@ -545,6 +553,113 @@ def delete_trip(
         "message": "Trip deleted successfully"
     }
 
+# =========================================================
+# FUEL LOGS
+# =========================================================
+
+@app.get(
+    "/api/fuel-logs",
+    response_model=list[schemas.FuelLogOut]
+)
+def list_fuel_logs(
+    vehicle_id: int | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.FuelLog)
+
+    if vehicle_id is not None:
+        query = query.filter(
+            models.FuelLog.vehicle_id == vehicle_id
+        )
+
+    return query.order_by(models.FuelLog.id.desc()).all()
+
+
+@app.post(
+    "/api/fuel-logs",
+    response_model=schemas.FuelLogOut,
+    status_code=201
+)
+def create_fuel_log(
+    fuel: schemas.FuelLogCreate,
+    db: Session = Depends(get_db)
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(models.Vehicle.id == fuel.vehicle_id)
+        .first()
+    )
+
+    if not vehicle:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found"
+        )
+
+    if fuel.liters <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Liters must be greater than 0"
+        )
+
+    if fuel.price_per_liter <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Price per liter must be greater than 0"
+        )
+
+    total_cost = round(
+        fuel.liters * fuel.price_per_liter,
+        2
+    )
+
+    new_fuel_log = models.FuelLog(
+        vehicle_id=fuel.vehicle_id,
+        fuel_type=fuel.fuel_type.strip() or "Diesel",
+        liters=fuel.liters,
+        price_per_liter=fuel.price_per_liter,
+        total_cost=total_cost,
+        odometer=fuel.odometer,
+        station_name=(
+            fuel.station_name.strip()
+            if fuel.station_name
+            else ""
+        ),
+        date=fuel.date
+    )
+
+    db.add(new_fuel_log)
+    db.commit()
+    db.refresh(new_fuel_log)
+
+    return new_fuel_log
+
+
+@app.delete("/api/fuel-logs/{fuel_log_id}")
+def delete_fuel_log(
+    fuel_log_id: int,
+    db: Session = Depends(get_db)
+):
+    fuel_log = (
+        db.query(models.FuelLog)
+        .filter(models.FuelLog.id == fuel_log_id)
+        .first()
+    )
+
+    if not fuel_log:
+        raise HTTPException(
+            status_code=404,
+            detail="Fuel record not found"
+        )
+
+    db.delete(fuel_log)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Fuel record deleted successfully"
+    }
+
 
 # =========================================================
 # ALERTS
@@ -565,3 +680,37 @@ def list_alerts(
         )
         .all()
     )
+@app.get("/api/maintenance", response_model=list[schemas.MaintenanceRecordOut])
+def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_db)):
+    query = db.query(models.MaintenanceRecord)
+    if vehicle_id is not None:
+        query = query.filter(models.MaintenanceRecord.vehicle_id == vehicle_id)
+    return query.order_by(models.MaintenanceRecord.id.desc()).all()
+
+
+@app.post("/api/maintenance", response_model=schemas.MaintenanceRecordOut, status_code=201)
+def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = Depends(get_db)):
+    from datetime import date as date_type
+
+    vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == record.vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    new_record = models.MaintenanceRecord(
+        **record.model_dump(),
+        date=date_type.today(),
+    )
+    db.add(new_record)
+    db.commit()
+    db.refresh(new_record)
+    return new_record
+
+
+@app.delete("/api/maintenance/{record_id}")
+def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(models.MaintenanceRecord).filter(models.MaintenanceRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Maintenance record not found")
+    db.delete(record)
+    db.commit()
+    return {"ok": True, "message": "Maintenance record deleted"}

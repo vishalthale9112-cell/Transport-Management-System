@@ -169,3 +169,54 @@ class DashboardStats(BaseModel):
     cost_per_km: dict
 
     alerts: list[AlertOut]
+
+# =========================================================
+# FUEL LOG
+# =========================================================
+
+class FuelLogCreate(BaseModel):
+    vehicle_id: int
+    fuel_type: str = "Diesel"
+    liters: float
+    price_per_liter: float
+    total_cost: Optional[float] = None
+    odometer: int = 0
+    station_name: Optional[str] = ""
+    date: date
+
+
+class FuelLogOut(BaseModel):
+    id: int
+    vehicle_id: int
+    fuel_type: str
+    liters: float
+    price_per_liter: float
+    total_cost: float
+    odometer: int
+    station_name: Optional[str] = ""
+    date: date
+
+    class Config:
+        from_attributes = True
+
+class MaintenanceRecordCreate(BaseModel):
+    vehicle_id: int
+    service_type: str
+    brand: Optional[str] = ""
+    driver_name: Optional[str] = ""
+    cost: float = 0
+    next_due_days: int = 30
+
+
+class MaintenanceRecordOut(BaseModel):
+    id: int
+    vehicle_id: int
+    service_type: str
+    brand: Optional[str] = ""
+    driver_name: Optional[str] = ""
+    cost: float
+    next_due_days: int
+    date: date
+
+    class Config:
+        from_attributes = True

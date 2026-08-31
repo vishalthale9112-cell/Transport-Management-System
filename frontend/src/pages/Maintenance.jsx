@@ -1,10 +1,15 @@
 import { useState, useEffect } from "react";
 import { Plus, Wrench, AlertTriangle, Calendar, IndianRupee, Clock, User, Phone, Droplet, Disc, Settings, CircleDot, Tag } from "lucide-react";
+<<<<<<< HEAD
 import { getVehicles, getDrivers } from "../api";
+=======
+import { getVehicles, getDrivers, getMaintenance, createMaintenance } from "../api";
+>>>>>>> backend-work
 
 export default function Maintenance() {
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
+<<<<<<< HEAD
   const [records, setRecords] = useState([
     { id: 1, vehicle: "MH20BH1234", service_type: "Oil Change", brand: "Castrol", date: "2026-08-31", cost: 1200, next_due_days: 1, driver: "" },
     { id: 2, vehicle: "MH14CD5678", service_type: "Oil Change", brand: "Shell", date: "2026-08-20", cost: 2500, next_due_days: 2, driver: "Suresh Patil" },
@@ -39,6 +44,40 @@ export default function Maintenance() {
     ]);
     setForm({ vehicle: "", service_type: "", brand: "", cost: "", next_due_days: "", driver: "" });
     setShowForm(false);
+=======
+  const [records, setRecords] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ vehicle_id: "", service_type: "", brand: "", cost: "", next_due_days: "", driver_name: "" });
+  const [selected, setSelected] = useState(null);
+
+  const load = () => getMaintenance().then(setRecords).catch(() => {});
+
+  useEffect(() => {
+    getVehicles().then(setVehicles).catch(() => {});
+    getDrivers().then(setDrivers).catch(() => {});
+    load();
+  }, []);
+
+  const vehicleNumber = (id) => {
+    const v = vehicles.find((v) => v.id === id);
+    return v ? v.registration_number : `#${id}`;
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.vehicle_id || !form.service_type) return;
+    await createMaintenance({
+      vehicle_id: Number(form.vehicle_id),
+      service_type: form.service_type,
+      brand: form.brand,
+      driver_name: form.driver_name,
+      cost: Number(form.cost) || 0,
+      next_due_days: Number(form.next_due_days) || 30,
+    });
+    setForm({ vehicle_id: "", service_type: "", brand: "", cost: "", next_due_days: "", driver_name: "" });
+    setShowForm(false);
+    load();
+>>>>>>> backend-work
   };
 
   const dueSoonCount = records.filter((r) => r.next_due_days <= 5).length;
@@ -85,13 +124,22 @@ export default function Maintenance() {
           {showForm && (
             <form onSubmit={handleAdd} style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
               <select
+<<<<<<< HEAD
                 value={form.vehicle}
                 onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+=======
+                value={form.vehicle_id}
+                onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}
+>>>>>>> backend-work
                 style={{ padding: 8, borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }}
               >
                 <option value="">Select Vehicle</option>
                 {vehicles.map((v) => (
+<<<<<<< HEAD
                   <option key={v.id} value={v.registration_number}>{v.registration_number}</option>
+=======
+                  <option key={v.id} value={v.id}>{v.registration_number}</option>
+>>>>>>> backend-work
                 ))}
               </select>
               <input
@@ -107,8 +155,13 @@ export default function Maintenance() {
                 style={{ padding: 8, borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, width: 170 }}
               />
               <select
+<<<<<<< HEAD
                 value={form.driver}
                 onChange={(e) => setForm({ ...form, driver: e.target.value })}
+=======
+                value={form.driver_name}
+                onChange={(e) => setForm({ ...form, driver_name: e.target.value })}
+>>>>>>> backend-work
                 style={{ padding: 8, borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }}
               >
                 <option value="">Done by (Driver)</option>
@@ -153,7 +206,11 @@ export default function Maintenance() {
                   style={{ cursor: "pointer", background: selected?.id === r.id ? "var(--bg)" : undefined }}
                 >
                   <td style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+<<<<<<< HEAD
                     <Wrench size={13} color="var(--teal-600)" /> {r.vehicle}
+=======
+                    <Wrench size={13} color="var(--teal-600)" /> {vehicleNumber(r.vehicle_id)}
+>>>>>>> backend-work
                   </td>
                   <td>{r.service_type}</td>
                   <td>{r.brand || "—"}</td>
@@ -221,7 +278,11 @@ export default function Maintenance() {
                 </div>
               )}
 
+<<<<<<< HEAD
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{selected.vehicle}</div>
+=======
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>{vehicleNumber(selected.vehicle_id)}</div>
+>>>>>>> backend-work
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -244,17 +305,28 @@ export default function Maintenance() {
                   </div>
                 </div>
 
+<<<<<<< HEAD
                 {selected.driver && (
+=======
+                {selected.driver_name && (
+>>>>>>> backend-work
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <User size={15} color="var(--teal-600)" />
                     </div>
                     <div>
                       <div style={{ fontSize: 11, color: "var(--text-500)" }}>Done by</div>
+<<<<<<< HEAD
                       <div style={{ fontSize: 13, fontWeight: 700 }}>{selected.driver}</div>
                       {driverInfo(selected.driver)?.phone && (
                         <div style={{ fontSize: 11, color: "var(--text-500)", display: "flex", alignItems: "center", gap: 4 }}>
                           <Phone size={10} /> {driverInfo(selected.driver).phone}
+=======
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{selected.driver_name}</div>
+                      {driverInfo(selected.driver_name)?.phone && (
+                        <div style={{ fontSize: 11, color: "var(--text-500)", display: "flex", alignItems: "center", gap: 4 }}>
+                          <Phone size={10} /> {driverInfo(selected.driver_name).phone}
+>>>>>>> backend-work
                         </div>
                       )}
                     </div>
