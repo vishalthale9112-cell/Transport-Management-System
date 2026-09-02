@@ -15,12 +15,12 @@ import Trips from "./pages/Trips";
 import LiveTracking from "./pages/LiveTracking";
 import FuelManagement from "./pages/FuelManagement";
 import Maintenance from "./pages/Maintenance";
+import Customers from "./pages/Customers";
 import Placeholder from "./pages/Placeholder";
 import DriverTracking from "./pages/DriverTracking";
 
 
 const placeholders = [
-  ["/customers", "Customers"],
   ["/income", "Income"],
   ["/expenses", "Expenses"],
   ["/reports", "Reports"],
@@ -101,6 +101,11 @@ function AdminLayout() {
           <Route
             path="/maintenance"
             element={<Maintenance />}
+          />
+
+          <Route
+            path="/customers"
+            element={<Customers />}
           />
 
           {placeholders.map(([path, title]) => (

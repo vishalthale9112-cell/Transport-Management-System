@@ -96,23 +96,41 @@ class VehicleOut(BaseModel):
 
 class OrderCreate(BaseModel):
     order_code: str
-    customer_name: str
+
+    customer_id: Optional[int] = None
+    customer_name: str = ""
+
     status: str = "Pending"
-    amount: float = 0
+
+    amount: float = Field(
+        default=0,
+        ge=0,
+    )
+
     created_at: Optional[date] = None
 
 
 class OrderUpdate(BaseModel):
+    customer_id: Optional[int] = None
     customer_name: Optional[str] = None
+
     status: Optional[str] = None
-    amount: Optional[float] = None
+
+    amount: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+
     created_at: Optional[date] = None
 
 
 class OrderOut(BaseModel):
     id: int
     order_code: str
+
+    customer_id: Optional[int] = None
     customer_name: str
+
     status: str
     amount: float
     created_at: Optional[date] = None
@@ -120,7 +138,6 @@ class OrderOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
-
 
 # =========================================================
 # TRIP SCHEMAS

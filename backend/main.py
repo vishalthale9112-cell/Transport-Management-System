@@ -10,6 +10,7 @@ import models
 import schemas
 
 from database import engine, get_db, Base
+from sqlalchemy import inspect, text
 
 
 # =========================================================
@@ -17,6 +18,60 @@ from database import engine, get_db, Base
 # =========================================================
 
 Base.metadata.create_all(bind=engine)
+
+# =========================================================
+# SAFE DATABASE MIGRATIONS
+# =========================================================
+
+def ensure_database_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    migrations = {
+        "orders": {
+            "customer_id": "INTEGER",
+        },
+        "customers": {
+            "phone": "VARCHAR DEFAULT ''",
+            "email": "VARCHAR DEFAULT ''",
+            "company_name": "VARCHAR DEFAULT ''",
+            "gst_number": "VARCHAR DEFAULT ''",
+            "address": "VARCHAR DEFAULT ''",
+            "city": "VARCHAR DEFAULT ''",
+            "state": "VARCHAR DEFAULT 'Maharashtra'",
+            "pincode": "VARCHAR DEFAULT ''",
+            "status": "VARCHAR DEFAULT 'Active'",
+            "total_orders": "INTEGER DEFAULT 0",
+            "total_trips": "INTEGER DEFAULT 0",
+            "total_revenue": "FLOAT DEFAULT 0",
+            "paid_amount": "FLOAT DEFAULT 0",
+            "pending_amount": "FLOAT DEFAULT 0",
+        },
+    }
+
+    for table_name, required_columns in migrations.items():
+        if table_name not in table_names:
+            continue
+
+        existing_columns = {
+            column["name"]
+            for column in inspector.get_columns(table_name)
+        }
+
+        for column_name, column_type in required_columns.items():
+            if column_name in existing_columns:
+                continue
+
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table_name} "
+                        f"ADD COLUMN {column_name} {column_type}"
+                    )
+                )
+
+
+ensure_database_columns()
 
 
 # =========================================================
@@ -346,10 +401,7 @@ def delete_driver(
 
     driver = (
         db.query(models.Driver)
-        .filter(
-            models.Driver.id
-            == driver_id
-        )
+        .filter(models.Driver.id == driver_id)
         .first()
     )
 
@@ -360,7 +412,6 @@ def delete_driver(
         )
 
     db.delete(driver)
-
     db.commit()
 
     return {
@@ -375,52 +426,204 @@ def delete_driver(
 
 @app.get(
     "/api/orders",
-    response_model=list[schemas.OrderOut]
+    response_model=list[schemas.OrderOut],
 )
 def list_orders(
-    db: Session = Depends(get_db)
+    customer_id: int | None = None,
+    status: str = "",
+    db: Session = Depends(get_db),
 ):
+    query = db.query(models.Order)
+
+    if customer_id is not None:
+        query = query.filter(
+            models.Order.customer_id
+            == customer_id
+        )
+
+    if status.strip():
+        query = query.filter(
+            models.Order.status
+            == status.strip()
+        )
 
     return (
-        db.query(models.Order)
-        .order_by(
-            models.Order.id.desc()
-        )
+        query
+        .order_by(models.Order.id.desc())
         .all()
     )
 
 
 @app.post(
     "/api/orders",
-    response_model=schemas.OrderOut
+    response_model=schemas.OrderOut,
+    status_code=201,
 )
 def create_order(
     order: schemas.OrderCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    order_code = order.order_code.strip()
 
-    order_data = order.model_dump()
+    if not order_code:
+        raise HTTPException(
+            status_code=400,
+            detail="Order code is required",
+        )
 
-    if not order_data.get("created_at"):
-        order_data["created_at"] = date.today()
+    existing_order = (
+        db.query(models.Order)
+        .filter(
+            models.Order.order_code
+            == order_code
+        )
+        .first()
+    )
 
-    new_order = models.Order(**order_data)
+    if existing_order:
+        raise HTTPException(
+            status_code=400,
+            detail="Order code already exists",
+        )
+
+    customer = None
+
+    if order.customer_id is not None:
+        customer = (
+            db.query(models.Customer)
+            .filter(
+                models.Customer.id
+                == order.customer_id
+            )
+            .first()
+        )
+
+    elif order.customer_name.strip():
+        customer = (
+            db.query(models.Customer)
+            .filter(
+                models.Customer.name
+                == order.customer_name.strip()
+            )
+            .first()
+        )
+
+    if not customer:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Customer not found. "
+                "Please select a customer."
+            ),
+        )
+
+    created_date = (
+        order.created_at
+        if order.created_at
+        else date.today()
+    )
+
+    new_order = models.Order(
+        order_code=order_code,
+        customer_id=customer.id,
+        customer_name=customer.name,
+        status=(
+            order.status.strip()
+            or "Pending"
+        ),
+        amount=order.amount,
+        created_at=created_date,
+    )
 
     db.add(new_order)
 
-    db.commit()
+    customer.total_orders = (
+        int(customer.total_orders or 0)
+        + 1
+    )
 
+    customer.total_revenue = (
+        float(customer.total_revenue or 0)
+        + float(order.amount or 0)
+    )
+
+    customer.pending_amount = max(
+        float(customer.total_revenue or 0)
+        - float(customer.paid_amount or 0),
+        0,
+    )
+
+    db.commit()
     db.refresh(new_order)
 
     return new_order
-@app.delete("/api/orders/{order_id}")
-def delete_order(order_id: int, db: Session = Depends(get_db)):
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+
+
+@app.delete(
+    "/api/orders/{order_id}"
+)
+def delete_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    order = (
+        db.query(models.Order)
+        .filter(
+            models.Order.id
+            == order_id
+        )
+        .first()
+    )
+
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found",
+        )
+
+    customer = None
+
+    if order.customer_id is not None:
+        customer = (
+            db.query(models.Customer)
+            .filter(
+                models.Customer.id
+                == order.customer_id
+            )
+            .first()
+        )
+
+    if customer:
+        customer.total_orders = max(
+            int(customer.total_orders or 0)
+            - 1,
+            0,
+        )
+
+        customer.total_revenue = max(
+            float(customer.total_revenue or 0)
+            - float(order.amount or 0),
+            0,
+        )
+
+        customer.paid_amount = min(
+            float(customer.paid_amount or 0),
+            float(customer.total_revenue or 0),
+        )
+
+        customer.pending_amount = max(
+            float(customer.total_revenue or 0)
+            - float(customer.paid_amount or 0),
+            0,
+        )
+
     db.delete(order)
     db.commit()
-    return {"ok": True, "message": "Order deleted"}
+
+    return {
+        "ok": True,
+        "message": "Order deleted successfully",
+    }
 
 
 # =========================================================
@@ -1243,7 +1446,6 @@ def stop_driver_gps_tracking(
 # =========================================================
 # CUSTOMERS
 # =========================================================
-
 @app.get(
     "/api/customers",
     response_model=list[schemas.CustomerOut],
@@ -1259,29 +1461,13 @@ def list_customers(
         search_value = f"%{search.strip()}%"
 
         query = query.filter(
-            (
-                models.Customer.name.ilike(
-                    search_value
-                )
-            )
+            models.Customer.name.ilike(search_value)
             |
-            (
-                models.Customer.phone.ilike(
-                    search_value
-                )
-            )
+            models.Customer.phone.ilike(search_value)
             |
-            (
-                models.Customer.company_name.ilike(
-                    search_value
-                )
-            )
+            models.Customer.company_name.ilike(search_value)
             |
-            (
-                models.Customer.city.ilike(
-                    search_value
-                )
-            )
+            models.Customer.city.ilike(search_value)
         )
 
     if status.strip():
@@ -1290,37 +1476,13 @@ def list_customers(
             == status.strip()
         )
 
-    return (
+    customers = (
         query
         .order_by(models.Customer.id.desc())
         .all()
     )
 
-
-@app.get(
-    "/api/customers/{customer_id}",
-    response_model=schemas.CustomerOut,
-)
-def get_customer(
-    customer_id: int,
-    db: Session = Depends(get_db),
-):
-    customer = (
-        db.query(models.Customer)
-        .filter(
-            models.Customer.id
-            == customer_id
-        )
-        .first()
-    )
-
-    if not customer:
-        raise HTTPException(
-            status_code=404,
-            detail="Customer not found",
-        )
-
-    return customer
+    return customers
 
 
 @app.post(
@@ -1574,3 +1736,4 @@ def delete_customer(
         "ok": True,
         "message": "Customer deleted successfully",
     }
+

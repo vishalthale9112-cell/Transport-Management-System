@@ -115,3 +115,119 @@ export async function getVehicleGpsHistory(
 
   return data;
 }
+
+// =========================================================
+// CUSTOMERS API
+// =========================================================
+
+export async function getCustomers(
+  search = "",
+  status = ""
+) {
+  const params = new URLSearchParams();
+
+  if (search.trim()) {
+    params.set("search", search.trim());
+  }
+
+  if (status.trim()) {
+    params.set("status", status.trim());
+  }
+
+  const query = params.toString();
+
+  const response = await fetch(
+    `${GPS_API_BASE}/customers${
+      query ? `?${query}` : ""
+    }`
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail ||
+        "Customers मिळाले नाहीत"
+    );
+  }
+
+  return data;
+}
+
+
+export async function createCustomer(
+  customerData
+) {
+  const response = await fetch(
+    `${GPS_API_BASE}/customers`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(customerData),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail ||
+        "Customer add झाला नाही"
+    );
+  }
+
+  return data;
+}
+
+
+export async function updateCustomer(
+  customerId,
+  customerData
+) {
+  const response = await fetch(
+    `${GPS_API_BASE}/customers/${customerId}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(customerData),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail ||
+        "Customer update झाला नाही"
+    );
+  }
+
+  return data;
+}
+
+
+export async function deleteCustomer(
+  customerId
+) {
+  const response = await fetch(
+    `${GPS_API_BASE}/customers/${customerId}`,
+    {
+      method: "DELETE",
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.detail ||
+        "Customer delete झाला नाही"
+    );
+  }
+
+  return data;
+}
