@@ -45,6 +45,7 @@ export default function LiveTracking() {
   const [routeInfo, setRouteInfo] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [gpsError, setGpsError] = useState("");
+  const [liveTripInfo, setLiveTripInfo] = useState(null);
 
   useEffect(() => {
     getVehicles()
@@ -64,6 +65,7 @@ export default function LiveTracking() {
 
   useEffect(() => {
     setRouteInfo(null);
+    setLiveTripInfo(null);
   }, [selected?.id]);
   useEffect(() => {
   let cancelled = false;
@@ -228,7 +230,7 @@ export default function LiveTracking() {
     selectedTrip?.destination,
   ]);
 
-  const progress = Math.max(
+  const savedProgress = Math.max(
     0,
     Math.min(
       100,
@@ -240,6 +242,136 @@ export default function LiveTracking() {
       )
     )
   );
+
+  useEffect(() => {
+    const destination =
+      routeInfo?.destinationCoordinates;
+
+    const currentLatitude = Number(
+      selected?.latitude
+    );
+    const currentLongitude = Number(
+      selected?.longitude
+    );
+
+    const destinationLatitude = Number(
+      destination?.[0]
+    );
+    const destinationLongitude = Number(
+      destination?.[1]
+    );
+
+    const totalKm = Number(
+      routeInfo?.distanceKm || 0
+    );
+
+    if (
+      !selected?.gps_last_updated ||
+      !Number.isFinite(currentLatitude) ||
+      !Number.isFinite(currentLongitude) ||
+      !Number.isFinite(destinationLatitude) ||
+      !Number.isFinite(destinationLongitude) ||
+      totalKm <= 0
+    ) {
+      setLiveTripInfo(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const calculateLiveTrip = async () => {
+      const osrmUrl =
+        "https://router.project-osrm.org/route/v1/driving/" +
+        `${currentLongitude},${currentLatitude};` +
+        `${destinationLongitude},${destinationLatitude}` +
+        "?overview=false&steps=false";
+
+      try {
+        const response = await fetch(osrmUrl, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            "Remaining route request failed"
+          );
+        }
+
+        const data = await response.json();
+        const remainingRoute = data.routes?.[0];
+
+        if (!remainingRoute || cancelled) {
+          return;
+        }
+
+        const remainingKm = Math.max(
+          remainingRoute.distance / 1000,
+          0
+        );
+
+        const remainingMinutes = Math.max(
+          remainingRoute.duration / 60,
+          0
+        );
+
+        const coveredKm = Math.max(
+          Math.min(totalKm - remainingKm, totalKm),
+          0
+        );
+
+        let calculatedProgress = Math.max(
+          0,
+          Math.min(
+            100,
+            (coveredKm / totalKm) * 100
+          )
+        );
+
+        // Within 200 metres means destination reached.
+        if (remainingKm <= 0.2) {
+          calculatedProgress = 100;
+        }
+
+        setLiveTripInfo({
+          totalKm,
+          coveredKm,
+          remainingKm,
+          remainingMinutes,
+          progress: Math.round(
+            calculatedProgress
+          ),
+        });
+      } catch (error) {
+        if (
+          error.name !== "AbortError" &&
+          !cancelled
+        ) {
+          console.error(
+            "Live trip calculation failed:",
+            error
+          );
+        }
+      }
+    };
+
+    calculateLiveTrip();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    selected?.id,
+    selected?.latitude,
+    selected?.longitude,
+    selected?.gps_last_updated,
+    routeInfo?.distanceKm,
+    routeInfo?.destinationCoordinates,
+  ]);
+
+  const progress =
+    liveTripInfo?.progress ?? savedProgress;
 
   const simulated = useMemo(() => {
     if (!selected) {
@@ -280,8 +412,13 @@ export default function LiveTracking() {
       Number(selectedTrip?.distance) ||
       0;
 
-    const coveredKm = totalKm * (progress / 100);
-    const remainingKm = Math.max(totalKm - coveredKm, 0);
+    const coveredKm =
+      liveTripInfo?.coveredKm ??
+      totalKm * (progress / 100);
+
+    const remainingKm =
+      liveTripInfo?.remainingKm ??
+      Math.max(totalKm - coveredKm, 0);
 
     const totalMinutes =
       Number(routeInfo?.durationMin) ||
@@ -289,6 +426,7 @@ export default function LiveTracking() {
       0;
 
     const remainingMinutes =
+      liveTripInfo?.remainingMinutes ??
       totalMinutes * ((100 - progress) / 100);
 
     return {
@@ -298,7 +436,12 @@ export default function LiveTracking() {
       totalMinutes,
       remainingMinutes,
     };
-  }, [routeInfo, selectedTrip, progress]);
+  }, [
+    routeInfo,
+    selectedTrip,
+    progress,
+    liveTripInfo,
+  ]);
 
   const hasLiveGps = Boolean(
     selected?.gps_last_updated
@@ -343,8 +486,11 @@ export default function LiveTracking() {
     selected?.driver?.license ||
     "—";
 
-  const currentLocation =
-    selected?.current_location ||
+  const currentLocation = hasLiveGps
+    ? `${Number(selected?.latitude).toFixed(5)}, ${Number(
+        selected?.longitude
+      ).toFixed(5)}`
+    : selected?.current_location ||
     (selectedTrip
       ? progress === 0
         ? selectedTrip.origin
@@ -733,6 +879,7 @@ ${lastUpdated.toLocaleString("en-IN")}
         >
           <RealMap
             vehicles={mapVehicles}
+            selectedVehicle={selected}
             onSelect={setSelected}
             height={610}
             route={routeData}
@@ -955,7 +1102,10 @@ ${lastUpdated.toLocaleString("en-IN")}
                     marginBottom: 5,
                   }}
                 >
-                  <span>Trip Progress</span>
+                  <span>
+                    Trip Progress
+                    {liveTripInfo ? " (Live GPS)" : ""}
+                  </span>
 
                   <strong>{progress}%</strong>
                 </div>

@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   MapContainer,
-  TileLayer,
   Marker,
-  Popup,
   Polyline,
+  Popup,
+  TileLayer,
   useMap,
 } from "react-leaflet";
 
@@ -12,9 +17,14 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 
-// =====================================
-// PIN ICON
-// =====================================
+const STATUS_COLOR = {
+  Active: "#10b981",
+  Running: "#10b981",
+  Idle: "#f59e0b",
+  Maintenance: "#ef4444",
+  Stopped: "#f97316",
+};
+
 
 function createPin(color, text) {
   return L.divIcon({
@@ -49,9 +59,36 @@ function createPin(color, text) {
 }
 
 
-// =====================================
-// GEOCODE LOCATION
-// =====================================
+function createVehicleIcon(
+  color,
+  selected = false
+) {
+  const size = selected ? 43 : 37;
+
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="
+        width:${size}px;
+        height:${size}px;
+        border-radius:50%;
+        background:${color};
+        border:${selected ? 4 : 3}px solid white;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        box-shadow:0 4px 13px rgba(0,0,0,.38);
+        font-size:${selected ? 21 : 18}px;
+      ">
+        🚚
+      </div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2)],
+  });
+}
+
 
 async function findLocation(place) {
   if (!place) return null;
@@ -60,19 +97,14 @@ async function findLocation(place) {
     .replace(/,+$/, "")
     .trim();
 
-  console.log(
-    "Searching location:",
-    cleanPlace
-  );
-
   try {
     const url =
       "https://nominatim.openstreetmap.org/search" +
-      `?format=json` +
-      `&limit=1` +
-      `&countrycodes=in` +
+      "?format=json" +
+      "&limit=1" +
+      "&countrycodes=in" +
       `&q=${encodeURIComponent(
-        cleanPlace + ", India"
+        `${cleanPlace}, India`
       )}`;
 
     const response = await fetch(url, {
@@ -81,11 +113,6 @@ async function findLocation(place) {
       },
     });
 
-    console.log(
-      "Geocode status:",
-      response.status
-    );
-
     if (!response.ok) {
       throw new Error(
         "Geocoding request failed"
@@ -93,12 +120,6 @@ async function findLocation(place) {
     }
 
     const data = await response.json();
-
-    console.log(
-      "Geocode result:",
-      cleanPlace,
-      data
-    );
 
     if (
       Array.isArray(data) &&
@@ -123,42 +144,43 @@ async function findLocation(place) {
 }
 
 
-// =====================================
-// AUTO FIT MAP
-// =====================================
-
 function FitMap({ path }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!path || path.length < 2) {
-      return;
+    if (!path?.length) return;
+
+    if (path.length === 1) {
+      map.setView(path[0], 13);
+    } else {
+      map.fitBounds(path, {
+        padding: [45, 45],
+        maxZoom: 14,
+      });
     }
 
-    console.log(
-      "Fitting map to route..."
+    const resizeTimer = window.setTimeout(
+      () => map.invalidateSize(),
+      250
     );
 
-    map.fitBounds(path, {
-      padding: [40, 40],
-    });
-
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 300);
+    return () => {
+      window.clearTimeout(resizeTimer);
+    };
   }, [path, map]);
 
   return null;
 }
 
 
-// =====================================
-// REAL MAP
-// =====================================
-
 export default function RealMap({
+  vehicles = [],
+  selectedVehicle = null,
+  onSelect,
   route = null,
   height = 380,
+  progressPercent = 0,
+  onRouteInfo,
 }) {
   const [originCoords, setOriginCoords] =
     useState(null);
@@ -184,16 +206,22 @@ export default function RealMap({
     useState(null);
 
 
-  // =====================================
-  // ROUTE EFFECT
-  // =====================================
+  const validVehicles = useMemo(
+    () =>
+      vehicles.filter(
+        (vehicle) =>
+          Number.isFinite(
+            Number(vehicle.latitude)
+          ) &&
+          Number.isFinite(
+            Number(vehicle.longitude)
+          )
+      ),
+    [vehicles]
+  );
+
 
   useEffect(() => {
-    console.log(
-      "RealMap mounted / route changed:",
-      route
-    );
-
     let cancelled = false;
 
     setOriginCoords(null);
@@ -203,20 +231,17 @@ export default function RealMap({
     setDuration(null);
     setError("");
 
-    if (
-      !route ||
-      !route.originName ||
-      !route.destinationName
-    ) {
-      console.log(
-        "RealMap: route missing"
-      );
-
-      setLoading(false);
-
-      return;
+    if (onRouteInfo) {
+      onRouteInfo(null);
     }
 
+    if (
+      !route?.originName ||
+      !route?.destinationName
+    ) {
+      setLoading(false);
+      return;
+    }
 
     const loadRoute = async () => {
       setLoading(true);
@@ -227,209 +252,120 @@ export default function RealMap({
       const destinationName =
         route.destinationName.trim();
 
-      console.log(
-        "================================"
+      const origin = await findLocation(
+        originName
       );
-
-      console.log(
-        "ROUTE REQUEST:"
-      );
-
-      console.log(
-        originName,
-        "→",
-        destinationName
-      );
-
-
-      // -------------------------------
-      // ORIGIN
-      // -------------------------------
-
-      const origin =
-        await findLocation(
-          originName
-        );
 
       if (cancelled) return;
-
-      console.log(
-        "Origin coordinates:",
-        origin
-      );
 
       if (!origin) {
         setError(
           `${originName} location सापडले नाही`
         );
-
         setLoading(false);
-
         return;
       }
 
-
-      // Nominatim ला थोडा gap
       await new Promise((resolve) =>
-        setTimeout(resolve, 1200)
+        window.setTimeout(resolve, 1200)
       );
-
-
-      // -------------------------------
-      // DESTINATION
-      // -------------------------------
 
       const destination =
-        await findLocation(
-          destinationName
-        );
+        await findLocation(destinationName);
 
       if (cancelled) return;
-
-      console.log(
-        "Destination coordinates:",
-        destination
-      );
 
       if (!destination) {
         setError(
           `${destinationName} location सापडले नाही`
         );
-
         setLoading(false);
-
         return;
       }
 
-
       setOriginCoords(origin);
+      setDestinationCoords(destination);
 
-      setDestinationCoords(
-        destination
-      );
-
-
-      // -------------------------------
-      // OSRM ROAD ROUTE
-      // -------------------------------
-
-      const [oLat, oLng] = origin;
-
-      const [dLat, dLng] =
+      const [originLat, originLng] =
+        origin;
+      const [destinationLat, destinationLng] =
         destination;
 
       const osrmUrl =
         "https://router.project-osrm.org/route/v1/driving/" +
-        `${oLng},${oLat};` +
-        `${dLng},${dLat}` +
-        "?overview=full" +
-        "&geometries=geojson";
-
-
-      console.log(
-        "OSRM URL:",
-        osrmUrl
-      );
-
+        `${originLng},${originLat};` +
+        `${destinationLng},${destinationLat}` +
+        "?overview=full&geometries=geojson";
 
       try {
-        const response =
-          await fetch(osrmUrl);
-
-        console.log(
-          "OSRM status:",
-          response.status
-        );
+        const response = await fetch(osrmUrl);
 
         if (!response.ok) {
-          throw new Error(
-            "OSRM failed"
-          );
+          throw new Error("OSRM failed");
         }
 
-        const data =
-          await response.json();
-
-        console.log(
-          "OSRM response:",
-          data
-        );
-
+        const data = await response.json();
 
         if (
           data.code === "Ok" &&
-          data.routes &&
-          data.routes.length > 0
+          data.routes?.length
         ) {
-          const routeInfo =
-            data.routes[0];
-
+          const osrmRoute = data.routes[0];
 
           const coordinates =
-            routeInfo.geometry.coordinates.map(
-              ([lng, lat]) => [
-                lat,
-                lng,
-              ]
+            osrmRoute.geometry.coordinates.map(
+              ([lng, lat]) => [lat, lng]
             );
 
+          const distanceKm =
+            osrmRoute.distance / 1000;
+
+          const durationMin =
+            osrmRoute.duration / 60;
 
           if (!cancelled) {
-            console.log(
-              "Road path points:",
-              coordinates.length
-            );
-
-            setRoadPath(
-              coordinates
-            );
-
-
-            const km =
-              routeInfo.distance /
-              1000;
-
-            setDistance(
-              km.toFixed(1)
-            );
-
-
-            const hours =
-              routeInfo.duration /
-              3600;
-
-            setDuration(
-              hours.toFixed(1)
-            );
-
-
+            setRoadPath(coordinates);
+            setDistance(distanceKm);
+            setDuration(durationMin);
             setError("");
+
+            if (onRouteInfo) {
+              onRouteInfo({
+                distanceKm,
+                durationMin,
+                originCoordinates: origin,
+                destinationCoordinates:
+                  destination,
+              });
+            }
           }
-        } else {
-          console.log(
-            "No road route returned"
+        } else if (!cancelled) {
+          setRoadPath([
+            origin,
+            destination,
+          ]);
+
+          setError(
+            "Road route मिळाला नाही. Direct line दाखवत आहे."
           );
 
-          if (!cancelled) {
-            setRoadPath([
-              origin,
-              destination,
-            ]);
-
-            setError(
-              "Road route मिळाला नाही. Direct line दाखवत आहे."
-            );
+          if (onRouteInfo) {
+            onRouteInfo({
+              distanceKm: 0,
+              durationMin: 0,
+              originCoordinates: origin,
+              destinationCoordinates:
+                destination,
+            });
           }
         }
-      } catch (error) {
+      } catch (routeError) {
         console.error(
-          "OSRM ERROR:",
-          error
+          "OSRM error:",
+          routeError
         );
 
-
         if (!cancelled) {
-          // कमीत कमी A → B line
           setRoadPath([
             origin,
             destination,
@@ -438,18 +374,25 @@ export default function RealMap({
           setError(
             "Road service problem. Direct route दाखवत आहे."
           );
+
+          if (onRouteInfo) {
+            onRouteInfo({
+              distanceKm: 0,
+              durationMin: 0,
+              originCoordinates: origin,
+              destinationCoordinates:
+                destination,
+            });
+          }
         }
       }
-
 
       if (!cancelled) {
         setLoading(false);
       }
     };
 
-
     loadRoute();
-
 
     return () => {
       cancelled = true;
@@ -457,12 +400,49 @@ export default function RealMap({
   }, [
     route?.originName,
     route?.destinationName,
+    onRouteInfo,
   ]);
 
 
-  // =====================================
-  // UI
-  // =====================================
+  const fitPath = useMemo(() => {
+    const path = roadPath
+      ? [...roadPath]
+      : [];
+
+    const selectedLat = Number(
+      selectedVehicle?.latitude
+    );
+    const selectedLng = Number(
+      selectedVehicle?.longitude
+    );
+
+    if (
+      Number.isFinite(selectedLat) &&
+      Number.isFinite(selectedLng)
+    ) {
+      path.push([
+        selectedLat,
+        selectedLng,
+      ]);
+    }
+
+    if (!path.length) {
+      validVehicles.forEach((vehicle) => {
+        path.push([
+          Number(vehicle.latitude),
+          Number(vehicle.longitude),
+        ]);
+      });
+    }
+
+    return path;
+  }, [
+    roadPath,
+    selectedVehicle?.latitude,
+    selectedVehicle?.longitude,
+    validVehicles,
+  ]);
+
 
   return (
     <div
@@ -475,17 +455,13 @@ export default function RealMap({
         background: "#e5e7eb",
       }}
     >
-
-      {/* LOADING */}
-
       {loading && (
         <div
           style={{
             position: "absolute",
             top: 12,
             left: "50%",
-            transform:
-              "translateX(-50%)",
+            transform: "translateX(-50%)",
             zIndex: 9999,
             background: "#ffffff",
             padding: "9px 16px",
@@ -500,37 +476,27 @@ export default function RealMap({
         </div>
       )}
 
-
-      {/* DISTANCE */}
-
-      {!loading &&
-        distance && (
-          <div
-            style={{
-              position: "absolute",
-              top: 12,
-              left: 12,
-              zIndex: 9999,
-              background:
-                "#ffffff",
-              padding:
-                "8px 12px",
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              boxShadow:
-                "0 2px 10px rgba(0,0,0,.2)",
-            }}
-          >
-            🚚 {distance} KM
-
-            {duration &&
-              ` • ${duration} hrs`}
-          </div>
-        )}
-
-
-      {/* ERROR */}
+      {!loading && distance !== null && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            zIndex: 9999,
+            background: "#ffffff",
+            padding: "8px 12px",
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            boxShadow:
+              "0 2px 10px rgba(0,0,0,.2)",
+          }}
+        >
+          🚚 {distance.toFixed(1)} KM
+          {duration !== null &&
+            ` • ${(duration / 60).toFixed(1)} hrs`}
+        </div>
+      )}
 
       {error && (
         <div
@@ -538,8 +504,7 @@ export default function RealMap({
             position: "absolute",
             bottom: 15,
             left: "50%",
-            transform:
-              "translateX(-50%)",
+            transform: "translateX(-50%)",
             zIndex: 9999,
             background: "#ffffff",
             color: "#dc2626",
@@ -557,33 +522,20 @@ export default function RealMap({
         </div>
       )}
 
-
-      {/* MAP */}
-
       <MapContainer
-        center={[
-          19.7515,
-          75.7139,
-        ]}
+        center={[19.7515, 75.7139]}
         zoom={6}
         style={{
           height: "100%",
           width: "100%",
         }}
       >
-
         <TileLayer
           attribution="© OpenStreetMap contributors"
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-
-        <FitMap
-          path={roadPath}
-        />
-
-
-        {/* START */}
+        <FitMap path={fitPath} />
 
         {originCoords && (
           <Marker
@@ -594,61 +546,88 @@ export default function RealMap({
             )}
           >
             <Popup>
-              <strong>
-                Starting Point
-              </strong>
-
+              <strong>Starting Point</strong>
               <br />
-
               {route?.originName}
             </Popup>
           </Marker>
         )}
 
-
-        {/* DESTINATION */}
-
         {destinationCoords && (
           <Marker
-            position={
-              destinationCoords
-            }
+            position={destinationCoords}
             icon={createPin(
               "#ef4444",
               "B"
             )}
           >
             <Popup>
-              <strong>
-                Destination
-              </strong>
-
+              <strong>Destination</strong>
               <br />
-
-              {
-                route?.destinationName
-              }
+              {route?.destinationName}
             </Popup>
           </Marker>
         )}
 
-        {/* BLUE ROUTE */}
+        {roadPath?.length >= 2 && (
+          <Polyline
+            positions={roadPath}
+            pathOptions={{
+              color: "#2563eb",
+              weight: 6,
+              opacity: 0.9,
+            }}
+          />
+        )}
 
-        {roadPath &&
-          roadPath.length >= 2 && (
-            <Polyline
-              positions={
-                roadPath
-              }
-              pathOptions={{
-                color:
-                  "#2563eb",
-                weight: 6,
-                opacity: 1,
+        {validVehicles.map((vehicle) => {
+          const isSelected =
+            Number(selectedVehicle?.id) ===
+            Number(vehicle.id);
+
+          const markerColor =
+            vehicle.gps_status === "Online"
+              ? "#10b981"
+              : STATUS_COLOR[vehicle.status] ||
+                "#334155";
+
+          return (
+            <Marker
+              key={vehicle.id}
+              position={[
+                Number(vehicle.latitude),
+                Number(vehicle.longitude),
+              ]}
+              icon={createVehicleIcon(
+                markerColor,
+                isSelected
+              )}
+              eventHandlers={{
+                click: () => {
+                  if (onSelect) {
+                    onSelect(vehicle);
+                  }
+                },
               }}
-            />
-          )}
-
+            >
+              <Popup>
+                <strong>
+                  {vehicle.registration_number}
+                </strong>
+                <br />
+                GPS: {vehicle.gps_status || "Offline"}
+                <br />
+                Speed: {Math.round(
+                  Number(vehicle.gps_speed || 0)
+                )} km/h
+                <br />
+                Trip: {Math.round(
+                  Number(progressPercent || 0)
+                )}%
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
     </div>
   );
