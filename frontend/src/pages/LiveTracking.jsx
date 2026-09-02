@@ -99,6 +99,16 @@ export default function LiveTracking() {
             gps_heading: gps.heading,
             gps_status: gps.gps_status,
             gps_last_updated: gps.recorded_at,
+            today_km: Number(gps.today_km || 0),
+            estimated_fuel_liters: Number(
+              gps.estimated_fuel_liters || 0
+            ),
+            estimated_fuel_cost: Number(
+              gps.estimated_fuel_cost || 0
+            ),
+            mileage_kmpl: Number(
+              gps.mileage_kmpl || 0
+            ),
           };
         })
       );
@@ -125,6 +135,16 @@ export default function LiveTracking() {
           gps_heading: gps.heading,
           gps_status: gps.gps_status,
           gps_last_updated: gps.recorded_at,
+          today_km: Number(gps.today_km || 0),
+          estimated_fuel_liters: Number(
+            gps.estimated_fuel_liters || 0
+          ),
+          estimated_fuel_cost: Number(
+            gps.estimated_fuel_cost || 0
+          ),
+          mileage_kmpl: Number(
+            gps.mileage_kmpl || 0
+          ),
         };
       });
 
@@ -280,15 +300,19 @@ export default function LiveTracking() {
     };
   }, [routeInfo, selectedTrip, progress]);
 
-  const todayKm =
-    distance.coveredKm > 0
-      ? distance.coveredKm
-      : Number(selected?.today_km || 0);
+  const hasLiveGps = Boolean(
+    selected?.gps_last_updated
+  );
 
-  const estimatedFuelCost =
-    distance.totalKm > 0
-      ? (distance.totalKm / 12) * 92
-      : 0;
+  const todayKm = Number(
+    selected?.today_km || 0
+  );
+
+  const estimatedFuelCost = hasLiveGps
+    ? Number(selected?.estimated_fuel_cost || 0)
+    : distance.totalKm > 0
+    ? (distance.totalKm / 12) * 92
+    : 0;
 
   const vehiclePhoto =
     selected?.photo_url ||
@@ -1025,14 +1049,18 @@ ${lastUpdated.toLocaleString("en-IN")}
               <InfoRow
                 icon={<Milestone size={14} />}
                 label="Today's Total KM"
-                value={formatKm(todayKm)}
+                value={
+                  hasLiveGps
+                    ? `${todayKm.toFixed(2)} km`
+                    : "—"
+                }
               />
 
               <InfoRow
                 icon={<Fuel size={14} />}
                 label="Estimated Fuel Cost"
                 value={
-                  estimatedFuelCost
+                  hasLiveGps || estimatedFuelCost
                     ? `₹${Math.round(
                         estimatedFuelCost
                       ).toLocaleString("en-IN")}`

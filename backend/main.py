@@ -1,4 +1,5 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from math import atan2, cos, radians, sin, sqrt
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -743,6 +744,8 @@ def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
 # =========================================================
 
 GPS_ONLINE_SECONDS = 30
+IST_OFFSET = timedelta(hours=5, minutes=30)
+EARTH_RADIUS_KM = 6371.0088
 
 
 def get_required_vehicle(
@@ -777,6 +780,170 @@ def gps_status_from_time(recorded_at):
         if age_seconds <= GPS_ONLINE_SECONDS
         else "Offline"
     )
+
+
+def gps_distance_km(first, second):
+    """Calculate distance between two GPS points."""
+    first_lat = radians(first.latitude)
+    second_lat = radians(second.latitude)
+    latitude_delta = radians(
+        second.latitude - first.latitude
+    )
+    longitude_delta = radians(
+        second.longitude - first.longitude
+    )
+
+    value = (
+        sin(latitude_delta / 2) ** 2
+        + cos(first_lat)
+        * cos(second_lat)
+        * sin(longitude_delta / 2) ** 2
+    )
+
+    central_angle = 2 * atan2(
+        sqrt(value),
+        sqrt(max(1 - value, 0)),
+    )
+
+    return EARTH_RADIUS_KM * central_angle
+
+
+def vehicle_mileage_kmpl(vehicle):
+    vehicle_type = str(
+        vehicle.vehicle_type or ""
+    ).lower()
+
+    if "truck" in vehicle_type:
+        return 6.0
+
+    if "tempo" in vehicle_type:
+        return 10.0
+
+    if "van" in vehicle_type:
+        return 12.0
+
+    return 14.0
+
+
+def vehicle_fuel_price(vehicle):
+    fuel_type = str(
+        vehicle.fuel_type or "Diesel"
+    ).lower()
+
+    if "petrol" in fuel_type:
+        return 105.0
+
+    if "cng" in fuel_type:
+        return 85.0
+
+    return 92.0
+
+
+def get_today_gps_summary(
+    vehicle,
+    db: Session,
+):
+    """Calculate today's distance using India Standard Time."""
+    now_utc = datetime.utcnow()
+    today_ist = (now_utc + IST_OFFSET).date()
+
+    start_of_today_ist = datetime(
+        today_ist.year,
+        today_ist.month,
+        today_ist.day,
+    )
+
+    start_of_today_utc = (
+        start_of_today_ist - IST_OFFSET
+    )
+
+    locations = (
+        db.query(models.VehicleLocation)
+        .filter(
+            models.VehicleLocation.vehicle_id
+            == vehicle.id,
+            models.VehicleLocation.recorded_at
+            >= start_of_today_utc,
+        )
+        .order_by(
+            models.VehicleLocation.recorded_at.asc(),
+            models.VehicleLocation.id.asc(),
+        )
+        .all()
+    )
+
+    total_km = 0.0
+
+    for previous, current in zip(
+        locations,
+        locations[1:],
+    ):
+        segment_km = gps_distance_km(
+            previous,
+            current,
+        )
+
+        previous_accuracy = float(
+            previous.accuracy or 0
+        )
+        current_accuracy = float(
+            current.accuracy or 0
+        )
+
+        # Ignore GPS movement caused only by location jitter.
+        minimum_movement_km = max(
+            0.02,
+            max(
+                previous_accuracy,
+                current_accuracy,
+            ) / 1000,
+        )
+
+        if segment_km < minimum_movement_km:
+            continue
+
+        elapsed_seconds = (
+            current.recorded_at
+            - previous.recorded_at
+        ).total_seconds()
+
+        if elapsed_seconds <= 0:
+            continue
+
+        calculated_speed = (
+            segment_km
+            / (elapsed_seconds / 3600)
+        )
+
+        # Ignore impossible jumps produced by weak GPS signals.
+        if calculated_speed > 180:
+            continue
+
+        total_km += segment_km
+
+    mileage = vehicle_mileage_kmpl(vehicle)
+    estimated_liters = (
+        total_km / mileage
+        if mileage > 0
+        else 0
+    )
+    estimated_cost = (
+        estimated_liters
+        * vehicle_fuel_price(vehicle)
+    )
+
+    return {
+        "today_km": round(total_km, 2),
+        "estimated_fuel_liters": round(
+            estimated_liters,
+            2,
+        ),
+        "estimated_fuel_cost": round(
+            estimated_cost,
+            2,
+        ),
+        "mileage_kmpl": mileage,
+    }
 
 
 @app.post(
@@ -928,6 +1095,11 @@ def list_latest_gps_locations(
         if not latest:
             continue
 
+        gps_summary = get_today_gps_summary(
+            vehicle,
+            db,
+        )
+
         result.append({
             "vehicle_id": vehicle.id,
             "registration_number": vehicle.registration_number,
@@ -940,6 +1112,7 @@ def list_latest_gps_locations(
             "gps_status": gps_status_from_time(
                 latest.recorded_at
             ),
+            **gps_summary,
         })
 
     return result
@@ -974,6 +1147,11 @@ def get_latest_vehicle_gps(
             detail="GPS location not received yet",
         )
 
+    gps_summary = get_today_gps_summary(
+        vehicle,
+        db,
+    )
+
     return {
         "vehicle_id": vehicle.id,
         "registration_number": vehicle.registration_number,
@@ -986,6 +1164,7 @@ def get_latest_vehicle_gps(
         "gps_status": gps_status_from_time(
             latest.recorded_at
         ),
+        **gps_summary,
     }
 
 

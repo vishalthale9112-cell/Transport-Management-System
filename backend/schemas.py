@@ -382,10 +382,15 @@ class GpsLatestLocationOut(BaseModel):
     recorded_at: datetime
     gps_status: str
 
+    # GPS history वरून calculate होणारी values
+    today_km: float = 0
+    estimated_fuel_liters: float = 0
+    estimated_fuel_cost: float = 0
+    mileage_kmpl: float = 0
+
     model_config = ConfigDict(
         from_attributes=True,
     )
-
 
 # =========================================================
 # GPS STATUS RESPONSE
