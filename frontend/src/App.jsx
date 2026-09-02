@@ -1,4 +1,9 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+} from "react-router-dom";
+
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 
@@ -11,6 +16,8 @@ import LiveTracking from "./pages/LiveTracking";
 import FuelManagement from "./pages/FuelManagement";
 import Maintenance from "./pages/Maintenance";
 import Placeholder from "./pages/Placeholder";
+import DriverTracking from "./pages/DriverTracking";
+
 
 const placeholders = [
   ["/customers", "Customers"],
@@ -23,48 +30,90 @@ const placeholders = [
   ["/settings", "Settings"],
 ];
 
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="app-shell">
-        <Sidebar />
+      <Routes>
+        {/* DRIVER PUBLIC GPS PAGE */}
 
-        <div className="main-col">
-          <Topbar />
+        <Route
+          path="/driver-track/:token"
+          element={<DriverTracking />}
+        />
 
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
+        {/* ADMIN DASHBOARD */}
 
-            <Route path="/vehicles" element={<Vehicles />} />
-
-            <Route path="/drivers" element={<Drivers />} />
-
-            <Route path="/orders" element={<Orders />} />
-
-            <Route path="/trips" element={<Trips />} />
-
-            <Route path="/tracking" element={<LiveTracking />} />
-
-            <Route
-              path="/fuel"
-              element={<FuelManagement />}
-            />
-
-            <Route
-              path="/maintenance"
-              element={<Maintenance />}
-            />
-
-            {placeholders.map(([path, title]) => (
-              <Route
-                key={path}
-                path={path}
-                element={<Placeholder title={title} />}
-              />
-            ))}
-          </Routes>
-        </div>
-      </div>
+        <Route
+          path="/*"
+          element={<AdminLayout />}
+        />
+      </Routes>
     </BrowserRouter>
+  );
+}
+
+
+function AdminLayout() {
+  return (
+    <div className="app-shell">
+      <Sidebar />
+
+      <div className="main-col">
+        <Topbar />
+
+        <Routes>
+          <Route
+            path="/"
+            element={<Dashboard />}
+          />
+
+          <Route
+            path="/vehicles"
+            element={<Vehicles />}
+          />
+
+          <Route
+            path="/drivers"
+            element={<Drivers />}
+          />
+
+          <Route
+            path="/orders"
+            element={<Orders />}
+          />
+
+          <Route
+            path="/trips"
+            element={<Trips />}
+          />
+
+          <Route
+            path="/tracking"
+            element={<LiveTracking />}
+          />
+
+          <Route
+            path="/fuel"
+            element={<FuelManagement />}
+          />
+
+          <Route
+            path="/maintenance"
+            element={<Maintenance />}
+          />
+
+          {placeholders.map(([path, title]) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Placeholder title={title} />
+              }
+            />
+          ))}
+        </Routes>
+      </div>
+    </div>
   );
 }

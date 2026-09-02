@@ -21,7 +21,12 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-import { getVehicles, getTrips } from "../api";
+import {
+  getVehicles,
+  getTrips,
+  createGpsTracker,
+  getLatestGpsLocations,
+} from "../api";
 import RealMap from "../components/RealMap";
 
 const STATUS_COLOR = {
@@ -39,6 +44,7 @@ export default function LiveTracking() {
   const [search, setSearch] = useState("");
   const [routeInfo, setRouteInfo] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [gpsError, setGpsError] = useState("");
 
   useEffect(() => {
     getVehicles()
@@ -59,6 +65,98 @@ export default function LiveTracking() {
   useEffect(() => {
     setRouteInfo(null);
   }, [selected?.id]);
+  useEffect(() => {
+  let cancelled = false;
+
+  const loadLiveGps = async () => {
+    try {
+      const gpsData =
+        await getLatestGpsLocations();
+
+      if (cancelled) return;
+
+      const gpsByVehicle = new Map(
+        (gpsData || []).map((gps) => [
+          Number(gps.vehicle_id),
+          gps,
+        ])
+      );
+
+      setVehicles((currentVehicles) =>
+        currentVehicles.map((vehicle) => {
+          const gps = gpsByVehicle.get(
+            Number(vehicle.id)
+          );
+
+          if (!gps) return vehicle;
+
+          return {
+            ...vehicle,
+            latitude: Number(gps.latitude),
+            longitude: Number(gps.longitude),
+            gps_speed: Number(gps.speed || 0),
+            gps_accuracy: gps.accuracy,
+            gps_heading: gps.heading,
+            gps_status: gps.gps_status,
+            gps_last_updated: gps.recorded_at,
+          };
+        })
+      );
+
+      setSelected((currentVehicle) => {
+        if (!currentVehicle) {
+          return currentVehicle;
+        }
+
+        const gps = gpsByVehicle.get(
+          Number(currentVehicle.id)
+        );
+
+        if (!gps) {
+          return currentVehicle;
+        }
+
+        return {
+          ...currentVehicle,
+          latitude: Number(gps.latitude),
+          longitude: Number(gps.longitude),
+          gps_speed: Number(gps.speed || 0),
+          gps_accuracy: gps.accuracy,
+          gps_heading: gps.heading,
+          gps_status: gps.gps_status,
+          gps_last_updated: gps.recorded_at,
+        };
+      });
+
+      if (gpsData?.length) {
+        setLastUpdated(new Date());
+      }
+
+      setGpsError("");
+    } catch (error) {
+      if (!cancelled) {
+        setGpsError(
+          error.message ||
+            "Live GPS connection failed"
+        );
+      }
+    }
+  };
+
+  // Page उघडताच location घ्या
+  loadLiveGps();
+
+  // दर 5 सेकंदांनी नवीन location घ्या
+  const gpsInterval = window.setInterval(
+    loadLiveGps,
+    5000
+  );
+
+  return () => {
+    cancelled = true;
+    window.clearInterval(gpsInterval);
+  };
+}, []);
 
   const filteredVehicles = useMemo(() => {
     const value = search.trim().toLowerCase();
@@ -142,10 +240,15 @@ export default function LiveTracking() {
       ) || progress > 0;
 
     return {
-      speed: running ? 42 + ((seed * 7) % 24) : 0,
+      speed:
+        selected.gps_speed !== undefined
+          ? Math.round(Number(selected.gps_speed) || 0)
+          : running
+          ? 42 + ((seed * 7) % 24)
+          : 0,
       fuelLevel: 34 + ((seed * 13) % 57),
       engineStatus: running ? "Running" : "Off",
-      gpsStatus: "Online",
+      gpsStatus: selected.gps_status || "Offline",
       driverRest: `${30 + ((seed * 11) % 70)} min`,
     };
   }, [selected, progress]);
@@ -262,6 +365,40 @@ export default function LiveTracking() {
       `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`,
       "_blank"
     );
+  };
+
+  const copyDriverGpsLink = async () => {
+    if (!selected) return;
+
+    try {
+      const tracker = await createGpsTracker(
+        selected.id
+      );
+
+      const trackingLink =
+        `${window.location.origin}` +
+        `${tracker.driver_tracking_path}`;
+
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(
+          trackingLink
+        );
+
+        alert(
+          "Driver GPS link copied successfully."
+        );
+      } else {
+        window.prompt(
+          "Copy this driver GPS link:",
+          trackingLink
+        );
+      }
+    } catch (error) {
+      alert(
+        error.message ||
+          "Driver GPS link could not be created."
+      );
+    }
   };
 
   const shareTracking = async () => {
@@ -393,6 +530,23 @@ ${lastUpdated.toLocaleString("en-IN")}
           />
         </div>
       </div>
+
+      {gpsError && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "9px 12px",
+            borderRadius: 8,
+            background: "#fff3f1",
+            border: "1px solid #ffd1cb",
+            color: "#b42318",
+            fontSize: 11,
+            fontWeight: 650,
+          }}
+        >
+          GPS connection: {gpsError}
+        </div>
+      )}
 
       {/* MAIN AREA */}
 
@@ -930,6 +1084,30 @@ ${lastUpdated.toLocaleString("en-IN")}
               </div>
 
               <button
+                type="button"
+                onClick={copyDriverGpsLink}
+                style={{
+                  width: "100%",
+                  marginTop: 8,
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "10px 8px",
+                  cursor: "pointer",
+                  background: "#16a085",
+                  color: "#ffffff",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                }}
+              >
+                <Satellite size={14} />
+                Copy Driver GPS Link
+              </button>
+
+              <button
                 onClick={downloadReport}
                 className="btn-primary"
                 style={{
@@ -1038,8 +1216,8 @@ ${lastUpdated.toLocaleString("en-IN")}
             </div>
 
             <AlertRow
-              good
-              text="GPS connection online"
+              good={simulated.gpsStatus === "Online"}
+              text={`GPS connection ${simulated.gpsStatus.toLowerCase()}`}
             />
 
             <AlertRow
@@ -1077,9 +1255,9 @@ ${lastUpdated.toLocaleString("en-IN")}
           marginTop: 8,
         }}
       >
-        Speed, fuel level, engine status and driver-rest values are
-        currently demo telemetry. Actual GPS/vehicle hardware can be
-        connected later.
+        GPS location, GPS status and speed use driver mobile data.
+        Fuel level, engine status and driver-rest values are currently
+        demo telemetry.
       </div>
     </div>
   );

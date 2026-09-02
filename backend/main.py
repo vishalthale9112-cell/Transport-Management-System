@@ -1,4 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException
+from datetime import date, datetime
+
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy.orm import Session
@@ -55,8 +57,7 @@ def root():
 # =========================================================
 
 @app.get(
-    "/api/dashboard",
-    response_model=schemas.DashboardStats
+    "/api/dashboard"
 )
 def get_dashboard(
     db: Session = Depends(get_db)
@@ -134,16 +135,16 @@ def get_dashboard(
         .all()
     )
 
-    return schemas.DashboardStats(
-        total_vehicles=total_vehicles,
-        active_trips=active_trips,
-        total_drivers=total_drivers,
-        pending_orders=pending_orders,
-        monthly_finance=finance_rows,
-        fuel_breakdown=fuel_counts,
-        cost_per_km=cost_per_km,
-        alerts=alerts,
-    )
+    return {
+        "total_vehicles": total_vehicles,
+        "active_trips": active_trips,
+        "total_drivers": total_drivers,
+        "pending_orders": pending_orders,
+        "monthly_finance": finance_rows,
+        "fuel_breakdown": fuel_counts,
+        "cost_per_km": cost_per_km,
+        "alerts": alerts,
+    }
 
 
 # =========================================================
@@ -237,6 +238,14 @@ def create_vehicle(
 
     db.refresh(new_vehicle)
 
+    # Every new vehicle automatically gets a secure GPS link token.
+    tracker = models.VehicleGpsTracker(
+        vehicle_id=new_vehicle.id,
+    )
+
+    db.add(tracker)
+    db.commit()
+
     return new_vehicle
 
 
@@ -262,6 +271,19 @@ def delete_vehicle(
             status_code=404,
             detail="Vehicle not found"
         )
+
+    # Remove GPS history and tracker before deleting the vehicle.
+    (
+        db.query(models.VehicleLocation)
+        .filter(models.VehicleLocation.vehicle_id == vehicle_id)
+        .delete(synchronize_session=False)
+    )
+
+    (
+        db.query(models.VehicleGpsTracker)
+        .filter(models.VehicleGpsTracker.vehicle_id == vehicle_id)
+        .delete(synchronize_session=False)
+    )
 
     db.delete(vehicle)
 
@@ -376,12 +398,12 @@ def create_order(
     db: Session = Depends(get_db)
 ):
 
-    from datetime import date
+    order_data = order.model_dump()
 
-    new_order = models.Order(
-        **order.model_dump(),
-        created_at=date.today()
-    )
+    if not order_data.get("created_at"):
+        order_data["created_at"] = date.today()
+
+    new_order = models.Order(**order_data)
 
     db.add(new_order)
 
@@ -690,16 +712,16 @@ def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_db)):
 
 @app.post("/api/maintenance", response_model=schemas.MaintenanceRecordOut, status_code=201)
 def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = Depends(get_db)):
-    from datetime import date as date_type
-
     vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == record.vehicle_id).first()
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    new_record = models.MaintenanceRecord(
-        **record.model_dump(),
-        date=date_type.today(),
-    )
+    record_data = record.model_dump()
+
+    if not record_data.get("date"):
+        record_data["date"] = date.today()
+
+    new_record = models.MaintenanceRecord(**record_data)
     db.add(new_record)
     db.commit()
     db.refresh(new_record)
@@ -714,3 +736,328 @@ def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
     db.delete(record)
     db.commit()
     return {"ok": True, "message": "Maintenance record deleted"}
+
+
+# =========================================================
+# REAL VEHICLE GPS TRACKING
+# =========================================================
+
+GPS_ONLINE_SECONDS = 30
+
+
+def get_required_vehicle(
+    vehicle_id: int,
+    db: Session,
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(models.Vehicle.id == vehicle_id)
+        .first()
+    )
+
+    if not vehicle:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found",
+        )
+
+    return vehicle
+
+
+def gps_status_from_time(recorded_at):
+    if not recorded_at:
+        return "Offline"
+
+    age_seconds = (
+        datetime.utcnow() - recorded_at
+    ).total_seconds()
+
+    return (
+        "Online"
+        if age_seconds <= GPS_ONLINE_SECONDS
+        else "Offline"
+    )
+
+
+@app.post(
+    "/api/gps/tracker/{vehicle_id}",
+    response_model=schemas.GpsTrackerOut,
+)
+def create_or_get_gps_tracker(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+):
+    vehicle = get_required_vehicle(vehicle_id, db)
+
+    tracker = (
+        db.query(models.VehicleGpsTracker)
+        .filter(
+            models.VehicleGpsTracker.vehicle_id
+            == vehicle_id
+        )
+        .first()
+    )
+
+    if not tracker:
+        tracker = models.VehicleGpsTracker(
+            vehicle_id=vehicle_id,
+        )
+        db.add(tracker)
+    else:
+        tracker.is_active = True
+
+    db.commit()
+    db.refresh(tracker)
+
+    return {
+        "vehicle_id": vehicle.id,
+        "registration_number": vehicle.registration_number,
+        "tracking_token": tracker.tracking_token,
+        "is_active": tracker.is_active,
+        "driver_tracking_path": (
+            f"/driver-track/{tracker.tracking_token}"
+        ),
+    }
+
+
+@app.get(
+    "/api/gps/tracker/{vehicle_id}",
+    response_model=schemas.GpsTrackerOut,
+)
+def get_gps_tracker(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+):
+    return create_or_get_gps_tracker(
+        vehicle_id=vehicle_id,
+        db=db,
+    )
+
+
+@app.post("/api/gps/update/{tracking_token}")
+def receive_driver_gps_location(
+    tracking_token: str,
+    location: schemas.GpsLocationUpdate,
+    db: Session = Depends(get_db),
+):
+    tracker = (
+        db.query(models.VehicleGpsTracker)
+        .filter(
+            models.VehicleGpsTracker.tracking_token
+            == tracking_token
+        )
+        .first()
+    )
+
+    if not tracker:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid GPS tracking link",
+        )
+
+    if not tracker.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="GPS tracking is stopped",
+        )
+
+    vehicle = get_required_vehicle(
+        tracker.vehicle_id,
+        db,
+    )
+
+    now = datetime.utcnow()
+
+    gps_location = models.VehicleLocation(
+        vehicle_id=vehicle.id,
+        latitude=location.latitude,
+        longitude=location.longitude,
+        accuracy=location.accuracy,
+        speed=location.speed,
+        heading=location.heading,
+        recorded_at=now,
+    )
+
+    # Update the vehicle too, so the existing vehicle API and map
+    # always receive the latest real coordinates.
+    vehicle.latitude = location.latitude
+    vehicle.longitude = location.longitude
+    tracker.last_seen_at = now
+
+    db.add(gps_location)
+    db.commit()
+    db.refresh(gps_location)
+
+    return {
+        "ok": True,
+        "message": "Live GPS location updated",
+        "vehicle_id": vehicle.id,
+        "registration_number": vehicle.registration_number,
+        "latitude": gps_location.latitude,
+        "longitude": gps_location.longitude,
+        "speed": gps_location.speed,
+        "recorded_at": gps_location.recorded_at,
+        "gps_status": "Online",
+    }
+
+
+@app.get(
+    "/api/gps/latest",
+    response_model=list[schemas.GpsLatestLocationOut],
+)
+def list_latest_gps_locations(
+    db: Session = Depends(get_db),
+):
+    vehicles = db.query(models.Vehicle).all()
+    result = []
+
+    for vehicle in vehicles:
+        latest = (
+            db.query(models.VehicleLocation)
+            .filter(
+                models.VehicleLocation.vehicle_id
+                == vehicle.id
+            )
+            .order_by(
+                models.VehicleLocation.recorded_at.desc(),
+                models.VehicleLocation.id.desc(),
+            )
+            .first()
+        )
+
+        if not latest:
+            continue
+
+        result.append({
+            "vehicle_id": vehicle.id,
+            "registration_number": vehicle.registration_number,
+            "latitude": latest.latitude,
+            "longitude": latest.longitude,
+            "accuracy": latest.accuracy,
+            "speed": latest.speed,
+            "heading": latest.heading,
+            "recorded_at": latest.recorded_at,
+            "gps_status": gps_status_from_time(
+                latest.recorded_at
+            ),
+        })
+
+    return result
+
+
+@app.get(
+    "/api/gps/latest/{vehicle_id}",
+    response_model=schemas.GpsLatestLocationOut,
+)
+def get_latest_vehicle_gps(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+):
+    vehicle = get_required_vehicle(vehicle_id, db)
+
+    latest = (
+        db.query(models.VehicleLocation)
+        .filter(
+            models.VehicleLocation.vehicle_id
+            == vehicle_id
+        )
+        .order_by(
+            models.VehicleLocation.recorded_at.desc(),
+            models.VehicleLocation.id.desc(),
+        )
+        .first()
+    )
+
+    if not latest:
+        raise HTTPException(
+            status_code=404,
+            detail="GPS location not received yet",
+        )
+
+    return {
+        "vehicle_id": vehicle.id,
+        "registration_number": vehicle.registration_number,
+        "latitude": latest.latitude,
+        "longitude": latest.longitude,
+        "accuracy": latest.accuracy,
+        "speed": latest.speed,
+        "heading": latest.heading,
+        "recorded_at": latest.recorded_at,
+        "gps_status": gps_status_from_time(
+            latest.recorded_at
+        ),
+    }
+
+
+@app.get("/api/gps/history/{vehicle_id}")
+def get_vehicle_gps_history(
+    vehicle_id: int,
+    limit: int = Query(
+        default=200,
+        ge=1,
+        le=1000,
+    ),
+    db: Session = Depends(get_db),
+):
+    vehicle = get_required_vehicle(vehicle_id, db)
+
+    locations = (
+        db.query(models.VehicleLocation)
+        .filter(
+            models.VehicleLocation.vehicle_id
+            == vehicle_id
+        )
+        .order_by(
+            models.VehicleLocation.recorded_at.desc()
+        )
+        .limit(limit)
+        .all()
+    )
+
+    locations.reverse()
+
+    return {
+        "vehicle_id": vehicle.id,
+        "registration_number": vehicle.registration_number,
+        "locations": [
+            {
+                "latitude": item.latitude,
+                "longitude": item.longitude,
+                "accuracy": item.accuracy,
+                "speed": item.speed,
+                "heading": item.heading,
+                "recorded_at": item.recorded_at,
+            }
+            for item in locations
+        ],
+    }
+
+
+@app.post("/api/gps/stop/{tracking_token}")
+def stop_driver_gps_tracking(
+    tracking_token: str,
+    db: Session = Depends(get_db),
+):
+    tracker = (
+        db.query(models.VehicleGpsTracker)
+        .filter(
+            models.VehicleGpsTracker.tracking_token
+            == tracking_token
+        )
+        .first()
+    )
+
+    if not tracker:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid GPS tracking link",
+        )
+
+    tracker.is_active = False
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "GPS tracking stopped",
+        "vehicle_id": tracker.vehicle_id,
+    }
