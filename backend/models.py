@@ -442,3 +442,96 @@ class VehicleLocation(Base):
     )
 
     vehicle = relationship("Vehicle")
+# =========================================================
+# CUSTOMERS
+# =========================================================
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    name = Column(
+        String,
+        nullable=False,
+    )
+
+    phone = Column(
+        String,
+        default="",
+    )
+
+    email = Column(
+        String,
+        default="",
+    )
+
+    company_name = Column(
+        String,
+        default="",
+    )
+
+    gst_number = Column(
+        String,
+        default="",
+    )
+
+    address = Column(
+        String,
+        default="",
+    )
+
+    city = Column(
+        String,
+        default="",
+    )
+
+    state = Column(
+        String,
+        default="Maharashtra",
+    )
+
+    pincode = Column(
+        String,
+        default="",
+    )
+
+    status = Column(
+        String,
+        default="Active",
+    )
+
+    total_orders = Column(
+        Integer,
+        default=0,
+    )
+
+    total_trips = Column(
+        Integer,
+        default=0,
+    )
+
+    total_revenue = Column(
+        Float,
+        default=0,
+    )
+
+    paid_amount = Column(
+        Float,
+        default=0,
+    )
+
+    pending_amount = Column(
+        Float,
+        default=0,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )

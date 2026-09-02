@@ -1240,3 +1240,337 @@ def stop_driver_gps_tracking(
         "message": "GPS tracking stopped",
         "vehicle_id": tracker.vehicle_id,
     }
+# =========================================================
+# CUSTOMERS
+# =========================================================
+
+@app.get(
+    "/api/customers",
+    response_model=list[schemas.CustomerOut],
+)
+def list_customers(
+    search: str = "",
+    status: str = "",
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Customer)
+
+    if search.strip():
+        search_value = f"%{search.strip()}%"
+
+        query = query.filter(
+            (
+                models.Customer.name.ilike(
+                    search_value
+                )
+            )
+            |
+            (
+                models.Customer.phone.ilike(
+                    search_value
+                )
+            )
+            |
+            (
+                models.Customer.company_name.ilike(
+                    search_value
+                )
+            )
+            |
+            (
+                models.Customer.city.ilike(
+                    search_value
+                )
+            )
+        )
+
+    if status.strip():
+        query = query.filter(
+            models.Customer.status
+            == status.strip()
+        )
+
+    return (
+        query
+        .order_by(models.Customer.id.desc())
+        .all()
+    )
+
+
+@app.get(
+    "/api/customers/{customer_id}",
+    response_model=schemas.CustomerOut,
+)
+def get_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+):
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id
+            == customer_id
+        )
+        .first()
+    )
+
+    if not customer:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found",
+        )
+
+    return customer
+
+
+@app.post(
+    "/api/customers",
+    response_model=schemas.CustomerOut,
+    status_code=201,
+)
+def create_customer(
+    customer: schemas.CustomerCreate,
+    db: Session = Depends(get_db),
+):
+    customer_name = customer.name.strip()
+
+    if not customer_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer name is required",
+        )
+
+    phone = customer.phone.strip()
+    email = customer.email.strip().lower()
+
+    if phone:
+        existing_phone = (
+            db.query(models.Customer)
+            .filter(
+                models.Customer.phone == phone
+            )
+            .first()
+        )
+
+        if existing_phone:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Customer with this phone "
+                    "already exists"
+                ),
+            )
+
+    if email:
+        existing_email = (
+            db.query(models.Customer)
+            .filter(
+                models.Customer.email == email
+            )
+            .first()
+        )
+
+        if existing_email:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Customer with this email "
+                    "already exists"
+                ),
+            )
+
+    if (
+        customer.paid_amount
+        > customer.total_revenue
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Paid amount cannot be greater "
+                "than total revenue"
+            ),
+        )
+
+    pending_amount = max(
+        customer.total_revenue
+        - customer.paid_amount,
+        0,
+    )
+
+    new_customer = models.Customer(
+        name=customer_name,
+        phone=phone,
+        email=email,
+        company_name=(
+            customer.company_name.strip()
+        ),
+        gst_number=(
+            customer.gst_number.strip().upper()
+        ),
+        address=customer.address.strip(),
+        city=customer.city.strip(),
+        state=(
+            customer.state.strip()
+            or "Maharashtra"
+        ),
+        pincode=customer.pincode.strip(),
+        status=(
+            customer.status.strip()
+            or "Active"
+        ),
+        total_orders=customer.total_orders,
+        total_trips=customer.total_trips,
+        total_revenue=customer.total_revenue,
+        paid_amount=customer.paid_amount,
+        pending_amount=pending_amount,
+    )
+
+    db.add(new_customer)
+    db.commit()
+    db.refresh(new_customer)
+
+    return new_customer
+
+
+@app.put(
+    "/api/customers/{customer_id}",
+    response_model=schemas.CustomerOut,
+)
+def update_customer(
+    customer_id: int,
+    customer: schemas.CustomerUpdate,
+    db: Session = Depends(get_db),
+):
+    existing_customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id
+            == customer_id
+        )
+        .first()
+    )
+
+    if not existing_customer:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found",
+        )
+
+    update_data = customer.model_dump(
+        exclude_unset=True
+    )
+
+    text_fields = [
+        "name",
+        "phone",
+        "email",
+        "company_name",
+        "gst_number",
+        "address",
+        "city",
+        "state",
+        "pincode",
+        "status",
+    ]
+
+    for field_name in text_fields:
+        if (
+            field_name in update_data
+            and update_data[field_name]
+            is not None
+        ):
+            update_data[field_name] = (
+                update_data[field_name].strip()
+            )
+
+    if "email" in update_data:
+        update_data["email"] = (
+            update_data["email"].lower()
+        )
+
+    if "gst_number" in update_data:
+        update_data["gst_number"] = (
+            update_data["gst_number"].upper()
+        )
+
+    if (
+        "name" in update_data
+        and not update_data["name"]
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Customer name is required",
+        )
+
+    updated_revenue = float(
+        update_data.get(
+            "total_revenue",
+            existing_customer.total_revenue,
+        )
+    )
+
+    updated_paid = float(
+        update_data.get(
+            "paid_amount",
+            existing_customer.paid_amount,
+        )
+    )
+
+    if updated_paid > updated_revenue:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Paid amount cannot be greater "
+                "than total revenue"
+            ),
+        )
+
+    update_data["pending_amount"] = max(
+        updated_revenue - updated_paid,
+        0,
+    )
+
+    for field_name, field_value in (
+        update_data.items()
+    ):
+        setattr(
+            existing_customer,
+            field_name,
+            field_value,
+        )
+
+    db.commit()
+    db.refresh(existing_customer)
+
+    return existing_customer
+
+
+@app.delete(
+    "/api/customers/{customer_id}"
+)
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+):
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id
+            == customer_id
+        )
+        .first()
+    )
+
+    if not customer:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found",
+        )
+
+    db.delete(customer)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Customer deleted successfully",
+    }

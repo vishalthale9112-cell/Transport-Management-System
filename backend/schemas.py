@@ -408,3 +408,119 @@ class GpsTrackingStatusOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
+
+# =========================================================
+# CUSTOMER SCHEMAS
+# =========================================================
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: str = ""
+    email: str = ""
+
+    company_name: str = ""
+    gst_number: str = ""
+
+    address: str = ""
+    city: str = ""
+    state: str = "Maharashtra"
+    pincode: str = ""
+
+    status: str = "Active"
+
+    total_orders: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    total_trips: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    total_revenue: float = Field(
+        default=0,
+        ge=0,
+    )
+
+    paid_amount: float = Field(
+        default=0,
+        ge=0,
+    )
+
+    pending_amount: float = Field(
+        default=0,
+        ge=0,
+    )
+
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+    company_name: Optional[str] = None
+    gst_number: Optional[str] = None
+
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+
+    status: Optional[str] = None
+
+    total_orders: Optional[int] = Field(
+        default=None,
+        ge=0,
+    )
+
+    total_trips: Optional[int] = Field(
+        default=None,
+        ge=0,
+    )
+
+    total_revenue: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+
+    paid_amount: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+
+    pending_amount: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
+
+
+class CustomerOut(BaseModel):
+    id: int
+
+    name: str
+    phone: str
+    email: str
+
+    company_name: str
+    gst_number: str
+
+    address: str
+    city: str
+    state: str
+    pincode: str
+
+    status: str
+
+    total_orders: int
+    total_trips: int
+
+    total_revenue: float
+    paid_amount: float
+    pending_amount: float
+
+    created_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
