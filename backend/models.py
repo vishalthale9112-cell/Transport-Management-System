@@ -238,6 +238,78 @@ class MaintenanceRecord(Base):
 
     vehicle = relationship("Vehicle", back_populates="maintenance_records")
 
+class ExpenseRecord(Base):
+    __tablename__ = "expense_records"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    category = Column(
+        String,
+        nullable=False,
+    )
+
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=True,
+    )
+
+    driver_id = Column(
+        Integer,
+        ForeignKey("drivers.id"),
+        nullable=True,
+    )
+
+    vendor_name = Column(
+        String,
+        default="",
+    )
+
+    amount = Column(
+        Float,
+        default=0,
+        nullable=False,
+    )
+
+    expense_date = Column(
+        Date,
+        default=date.today,
+        nullable=False,
+    )
+
+    payment_mode = Column(
+        String,
+        default="Cash",
+    )
+
+    reference_number = Column(
+        String,
+        default="",
+    )
+
+    status = Column(
+        String,
+        default="Paid",
+    )
+
+    notes = Column(
+        String,
+        default="",
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")
+
 
 class VehicleGpsTracker(Base):
     __tablename__ = "vehicle_gps_trackers"

@@ -565,6 +565,71 @@ class CustomerOut(BaseModel):
     )
 
 
+
+# =========================================================
+# EXPENSE SCHEMAS
+# =========================================================
+
+class ExpenseCreate(BaseModel):
+    category: str
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+    vendor_name: str = ""
+
+    amount: float = Field(
+        ...,
+        gt=0,
+    )
+
+    expense_date: date
+
+    payment_mode: str = "Cash"
+    reference_number: str = ""
+    status: str = "Paid"
+    notes: str = ""
+
+
+class ExpenseUpdate(BaseModel):
+    category: Optional[str] = None
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+    vendor_name: Optional[str] = None
+
+    amount: Optional[float] = Field(
+        default=None,
+        gt=0,
+    )
+
+    expense_date: Optional[date] = None
+    payment_mode: Optional[str] = None
+    reference_number: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ExpenseOut(BaseModel):
+    id: int
+    category: str
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+    vendor_name: str
+    amount: float
+    expense_date: date
+    payment_mode: str
+    reference_number: str
+    status: str
+    notes: str
+    created_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
+
+
 # =========================================================
 # INCOME / PAYMENT SCHEMAS
 # =========================================================
@@ -609,6 +674,7 @@ class IncomeOut(BaseModel):
     customer: Optional[CustomerOut] = None
     order: Optional[OrderOut] = None
     vehicle: Optional[VehicleOut] = None
+    
 
     model_config = ConfigDict(
         from_attributes=True,

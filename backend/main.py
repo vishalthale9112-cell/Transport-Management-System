@@ -2305,3 +2305,274 @@ def delete_customer(
         "ok": True,
         "message": "Customer deleted successfully",
     }
+
+# =========================================================
+# EXPENSE MANAGEMENT
+# =========================================================
+
+@app.get(
+    "/api/expenses",
+    response_model=list[schemas.ExpenseOut],
+)
+def list_expenses(
+    category: str = "",
+    status: str = "",
+    vehicle_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.ExpenseRecord)
+
+    if category.strip():
+        query = query.filter(
+            models.ExpenseRecord.category == category.strip()
+        )
+
+    if status.strip():
+        query = query.filter(
+            models.ExpenseRecord.status == status.strip()
+        )
+
+    if vehicle_id is not None:
+        query = query.filter(
+            models.ExpenseRecord.vehicle_id == vehicle_id
+        )
+
+    return query.order_by(
+        models.ExpenseRecord.expense_date.desc(),
+        models.ExpenseRecord.id.desc(),
+    ).all()
+
+
+@app.get("/api/expenses/summary")
+def get_expense_summary(
+    db: Session = Depends(get_db),
+):
+    records = db.query(models.ExpenseRecord).all()
+    today = date.today()
+
+    total_expenses = sum(
+        float(record.amount or 0)
+        for record in records
+    )
+
+    this_month = sum(
+        float(record.amount or 0)
+        for record in records
+        if record.expense_date
+        and record.expense_date.year == today.year
+        and record.expense_date.month == today.month
+    )
+
+    vehicle_expenses = sum(
+        float(record.amount or 0)
+        for record in records
+        if record.vehicle_id is not None
+    )
+
+    pending_amount = sum(
+        float(record.amount or 0)
+        for record in records
+        if str(record.status or "").lower() == "pending"
+    )
+
+    return {
+        "total_expenses": round(total_expenses, 2),
+        "this_month": round(this_month, 2),
+        "vehicle_expenses": round(vehicle_expenses, 2),
+        "pending_amount": round(pending_amount, 2),
+        "total_records": len(records),
+    }
+
+
+@app.post(
+    "/api/expenses",
+    response_model=schemas.ExpenseOut,
+    status_code=201,
+)
+def create_expense(
+    payload: schemas.ExpenseCreate,
+    db: Session = Depends(get_db),
+):
+    category = payload.category.strip()
+
+    if not category:
+        raise HTTPException(
+            status_code=400,
+            detail="Expense category is required",
+        )
+
+    if payload.vehicle_id is not None:
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(models.Vehicle.id == payload.vehicle_id)
+            .first()
+        )
+
+        if not vehicle:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found",
+            )
+
+    if payload.driver_id is not None:
+        driver = (
+            db.query(models.Driver)
+            .filter(models.Driver.id == payload.driver_id)
+            .first()
+        )
+
+        if not driver:
+            raise HTTPException(
+                status_code=404,
+                detail="Driver not found",
+            )
+
+    expense = models.ExpenseRecord(
+        category=category,
+        vehicle_id=payload.vehicle_id,
+        driver_id=payload.driver_id,
+        vendor_name=payload.vendor_name.strip(),
+        amount=round(payload.amount, 2),
+        expense_date=payload.expense_date,
+        payment_mode=payload.payment_mode.strip() or "Cash",
+        reference_number=payload.reference_number.strip(),
+        status=payload.status.strip() or "Paid",
+        notes=payload.notes.strip(),
+    )
+
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+
+    return expense
+
+
+@app.put(
+    "/api/expenses/{expense_id}",
+    response_model=schemas.ExpenseOut,
+)
+def update_expense(
+    expense_id: int,
+    payload: schemas.ExpenseUpdate,
+    db: Session = Depends(get_db),
+):
+    expense = (
+        db.query(models.ExpenseRecord)
+        .filter(models.ExpenseRecord.id == expense_id)
+        .first()
+    )
+
+    if not expense:
+        raise HTTPException(
+            status_code=404,
+            detail="Expense record not found",
+        )
+
+    update_data = payload.model_dump(
+        exclude_unset=True
+    )
+
+    if "category" in update_data:
+        category = (
+            update_data["category"] or ""
+        ).strip()
+
+        if not category:
+            raise HTTPException(
+                status_code=400,
+                detail="Expense category is required",
+            )
+
+        update_data["category"] = category
+
+    if (
+        "vehicle_id" in update_data
+        and update_data["vehicle_id"] is not None
+    ):
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id
+                == update_data["vehicle_id"]
+            )
+            .first()
+        )
+
+        if not vehicle:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found",
+            )
+
+    if (
+        "driver_id" in update_data
+        and update_data["driver_id"] is not None
+    ):
+        driver = (
+            db.query(models.Driver)
+            .filter(
+                models.Driver.id
+                == update_data["driver_id"]
+            )
+            .first()
+        )
+
+        if not driver:
+            raise HTTPException(
+                status_code=404,
+                detail="Driver not found",
+            )
+
+    text_fields = [
+        "vendor_name",
+        "payment_mode",
+        "reference_number",
+        "status",
+        "notes",
+    ]
+
+    for field_name in text_fields:
+        if field_name in update_data:
+            update_data[field_name] = (
+                update_data[field_name] or ""
+            ).strip()
+
+    if "amount" in update_data:
+        update_data["amount"] = round(
+            update_data["amount"],
+            2,
+        )
+
+    for field_name, value in update_data.items():
+        setattr(expense, field_name, value)
+
+    db.commit()
+    db.refresh(expense)
+
+    return expense
+
+
+@app.delete("/api/expenses/{expense_id}")
+def delete_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+):
+    expense = (
+        db.query(models.ExpenseRecord)
+        .filter(models.ExpenseRecord.id == expense_id)
+        .first()
+    )
+
+    if not expense:
+        raise HTTPException(
+            status_code=404,
+            detail="Expense record not found",
+        )
+
+    db.delete(expense)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Expense deleted successfully",
+    }

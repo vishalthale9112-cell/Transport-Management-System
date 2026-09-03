@@ -238,3 +238,60 @@ export const updateIncome = (id, data) =>
 
 export const deleteIncome = (id) =>
   api.delete(`/income/${id}`).then((response) => response.data);
+
+// =========================================================
+// EXPENSE MANAGEMENT API
+// =========================================================
+
+export const getExpenses = (
+  category = "",
+  status = "",
+  vehicleId = null
+) => {
+  const params = new URLSearchParams();
+
+  if (category) {
+    params.set("category", category);
+  }
+
+  if (status) {
+    params.set("status", status);
+  }
+
+  if (vehicleId) {
+    params.set("vehicle_id", vehicleId);
+  }
+
+  const query = params.toString();
+
+  return api
+    .get(`/expenses${query ? `?${query}` : ""}`)
+    .then((response) => response.data);
+};
+
+
+export const getExpenseSummary = () =>
+  api
+    .get("/expenses/summary")
+    .then((response) => response.data);
+
+
+export const createExpense = (data) =>
+  api
+    .post("/expenses", data)
+    .then((response) => response.data);
+
+
+export const updateExpense = (
+  expenseId,
+  data
+) =>
+  api
+    .put(`/expenses/${expenseId}`, data)
+    .then((response) => response.data);
+
+
+export const deleteExpense = (expenseId) =>
+  api
+    .delete(`/expenses/${expenseId}`)
+    .then((response) => response.data);
