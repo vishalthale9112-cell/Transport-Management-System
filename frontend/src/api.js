@@ -295,3 +295,19 @@ export const deleteExpense = (expenseId) =>
   api
     .delete(`/expenses/${expenseId}`)
     .then((response) => response.data);
+
+// =========================================================
+// REPORTS API
+// =========================================================
+
+export const getReportsDashboard = (
+  month = ""
+) => {
+  const query = month
+    ? `?month=${encodeURIComponent(month)}`
+    : "";
+
+  return api
+    .get(`/reports/dashboard${query}`)
+    .then((response) => response.data);
+};

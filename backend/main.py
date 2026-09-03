@@ -2576,3 +2576,551 @@ def delete_expense(
         "ok": True,
         "message": "Expense deleted successfully",
     }
+
+# =========================================================
+# PROFESSIONAL REPORTS DASHBOARD
+# =========================================================
+
+REPORT_EXPENSE_CATEGORIES = [
+    "Fuel",
+    "Maintenance",
+    "Toll",
+    "Driver Salary",
+    "Office",
+    "Insurance",
+    "Repair",
+    "Other",
+]
+
+
+def normalize_expense_category(value):
+    category = str(value or "").strip()
+
+    for available_category in REPORT_EXPENSE_CATEGORIES:
+        if available_category.lower() == category.lower():
+            return available_category
+
+    return category or "Other"
+
+
+@app.get("/api/reports/dashboard")
+def get_reports_dashboard(
+    month: str = "",
+    db: Session = Depends(get_db),
+):
+    period_start = None
+    period_end = None
+
+    if month.strip():
+        try:
+            period_start = datetime.strptime(
+                month.strip(),
+                "%Y-%m",
+            ).date()
+
+            if period_start.month == 12:
+                period_end = date(
+                    period_start.year + 1,
+                    1,
+                    1,
+                )
+            else:
+                period_end = date(
+                    period_start.year,
+                    period_start.month + 1,
+                    1,
+                )
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Month must be in YYYY-MM format",
+            )
+
+    income_query = db.query(models.IncomeRecord)
+    expense_query = db.query(models.ExpenseRecord)
+    fuel_query = db.query(models.FuelLog)
+    maintenance_query = db.query(
+        models.MaintenanceRecord
+    )
+
+    if period_start and period_end:
+        income_query = income_query.filter(
+            models.IncomeRecord.payment_date
+            >= period_start,
+            models.IncomeRecord.payment_date
+            < period_end,
+        )
+
+        expense_query = expense_query.filter(
+            models.ExpenseRecord.expense_date
+            >= period_start,
+            models.ExpenseRecord.expense_date
+            < period_end,
+        )
+
+        fuel_query = fuel_query.filter(
+            models.FuelLog.date >= period_start,
+            models.FuelLog.date < period_end,
+        )
+
+        maintenance_query = maintenance_query.filter(
+            models.MaintenanceRecord.date
+            >= period_start,
+            models.MaintenanceRecord.date
+            < period_end,
+        )
+
+    income_records = income_query.all()
+    expense_records = expense_query.all()
+    fuel_records = fuel_query.all()
+    maintenance_records = maintenance_query.all()
+
+    received_income = [
+        record
+        for record in income_records
+        if str(
+            record.payment_status or ""
+        ).lower()
+        not in ["pending", "cancelled"]
+    ]
+
+    total_income = sum(
+        float(record.amount or 0)
+        for record in received_income
+    )
+
+    total_expenses = sum(
+        float(record.amount or 0)
+        for record in expense_records
+    )
+
+    paid_expenses = sum(
+        float(record.amount or 0)
+        for record in expense_records
+        if str(record.status or "").lower()
+        == "paid"
+    )
+
+    pending_expenses = sum(
+        float(record.amount or 0)
+        for record in expense_records
+        if str(record.status or "").lower()
+        == "pending"
+    )
+
+    # -----------------------------------------------------
+    # ALL EXPENSE CATEGORY TOTALS
+    # -----------------------------------------------------
+
+    category_totals = {
+        category: {
+            "category": category,
+            "amount": 0.0,
+            "count": 0,
+        }
+        for category in REPORT_EXPENSE_CATEGORIES
+    }
+
+    for record in expense_records:
+        category = normalize_expense_category(
+            record.category
+        )
+
+        if category not in category_totals:
+            category_totals[category] = {
+                "category": category,
+                "amount": 0.0,
+                "count": 0,
+            }
+
+        category_totals[category]["amount"] += float(
+            record.amount or 0
+        )
+
+        category_totals[category]["count"] += 1
+
+    expense_categories = sorted(
+        [
+            {
+                "category": item["category"],
+                "amount": round(
+                    item["amount"],
+                    2,
+                ),
+                "count": item["count"],
+            }
+            for item in category_totals.values()
+        ],
+        key=lambda item: item["amount"],
+        reverse=True,
+    )
+
+    # -----------------------------------------------------
+    # FUEL AND MAINTENANCE TOTALS
+    # -----------------------------------------------------
+
+    fuel_log_cost = sum(
+        float(record.total_cost or 0)
+        for record in fuel_records
+    )
+
+    fuel_expense_cost = category_totals[
+        "Fuel"
+    ]["amount"]
+
+    fuel_cost = (
+        fuel_expense_cost
+        if fuel_expense_cost > 0
+        else fuel_log_cost
+    )
+
+    maintenance_record_cost = sum(
+        float(record.cost or 0)
+        for record in maintenance_records
+    )
+
+    maintenance_expense_cost = category_totals[
+        "Maintenance"
+    ]["amount"]
+
+    maintenance_cost = (
+        maintenance_expense_cost
+        if maintenance_expense_cost > 0
+        else maintenance_record_cost
+    )
+
+    net_profit = total_income - total_expenses
+
+    profit_margin = (
+        (net_profit / total_income) * 100
+        if total_income > 0
+        else 0
+    )
+
+    vehicles = db.query(models.Vehicle).all()
+    trips = db.query(models.Trip).all()
+
+    # -----------------------------------------------------
+    # COMPLETE VEHICLE PERFORMANCE
+    # -----------------------------------------------------
+
+    vehicle_reports = []
+
+    for vehicle in vehicles:
+        vehicle_income = sum(
+            float(record.amount or 0)
+            for record in received_income
+            if record.vehicle_id == vehicle.id
+        )
+
+        vehicle_expense_records = [
+            record
+            for record in expense_records
+            if record.vehicle_id == vehicle.id
+        ]
+
+        vehicle_total_expense = sum(
+            float(record.amount or 0)
+            for record in vehicle_expense_records
+        )
+
+        vehicle_categories = {
+            category: 0.0
+            for category in REPORT_EXPENSE_CATEGORIES
+        }
+
+        for record in vehicle_expense_records:
+            category = normalize_expense_category(
+                record.category
+            )
+
+            if category not in vehicle_categories:
+                vehicle_categories[category] = 0.0
+
+            vehicle_categories[category] += float(
+                record.amount or 0
+            )
+
+        vehicle_fuel_log_cost = sum(
+            float(record.total_cost or 0)
+            for record in fuel_records
+            if record.vehicle_id == vehicle.id
+        )
+
+        vehicle_maintenance_record_cost = sum(
+            float(record.cost or 0)
+            for record in maintenance_records
+            if record.vehicle_id == vehicle.id
+        )
+
+        vehicle_fuel_cost = (
+            vehicle_categories["Fuel"]
+            if vehicle_categories["Fuel"] > 0
+            else vehicle_fuel_log_cost
+        )
+
+        vehicle_maintenance_cost = (
+            vehicle_categories["Maintenance"]
+            if vehicle_categories["Maintenance"] > 0
+            else vehicle_maintenance_record_cost
+        )
+
+        vehicle_trips = [
+            trip
+            for trip in trips
+            if trip.vehicle_id == vehicle.id
+        ]
+
+        vehicle_profit = (
+            vehicle_income - vehicle_total_expense
+        )
+
+        vehicle_reports.append({
+            "vehicle_id": vehicle.id,
+            "registration_number":
+                vehicle.registration_number,
+            "vehicle_type":
+                vehicle.vehicle_type,
+            "status":
+                vehicle.status,
+            "total_trips":
+                len(vehicle_trips),
+
+            "income": round(
+                vehicle_income,
+                2,
+            ),
+
+            "fuel_cost": round(
+                vehicle_fuel_cost,
+                2,
+            ),
+
+            "maintenance_cost": round(
+                vehicle_maintenance_cost,
+                2,
+            ),
+
+            "toll_cost": round(
+                vehicle_categories["Toll"],
+                2,
+            ),
+
+            "driver_salary": round(
+                vehicle_categories["Driver Salary"],
+                2,
+            ),
+
+            "office_cost": round(
+                vehicle_categories["Office"],
+                2,
+            ),
+
+            "insurance_cost": round(
+                vehicle_categories["Insurance"],
+                2,
+            ),
+
+            "repair_cost": round(
+                vehicle_categories["Repair"],
+                2,
+            ),
+
+            "other_cost": round(
+                vehicle_categories["Other"],
+                2,
+            ),
+
+            "expenses": round(
+                vehicle_total_expense,
+                2,
+            ),
+
+            "profit": round(
+                vehicle_profit,
+                2,
+            ),
+        })
+
+    # -----------------------------------------------------
+    # LAST SIX MONTHS CHART
+    # -----------------------------------------------------
+
+    selected_month = (
+        period_start
+        if period_start
+        else date.today().replace(day=1)
+    )
+
+    selected_month_number = (
+        selected_month.year * 12
+        + selected_month.month
+        - 1
+    )
+
+    all_income_records = (
+        db.query(models.IncomeRecord).all()
+    )
+
+    all_expense_records = (
+        db.query(models.ExpenseRecord).all()
+    )
+
+    monthly_data = []
+
+    for offset in range(5, -1, -1):
+        month_number = (
+            selected_month_number - offset
+        )
+
+        year_value = month_number // 12
+        month_value = month_number % 12 + 1
+
+        month_start = date(
+            year_value,
+            month_value,
+            1,
+        )
+
+        if month_value == 12:
+            next_month = date(
+                year_value + 1,
+                1,
+                1,
+            )
+        else:
+            next_month = date(
+                year_value,
+                month_value + 1,
+                1,
+            )
+
+        month_income = sum(
+            float(record.amount or 0)
+            for record in all_income_records
+            if record.payment_date
+            and month_start
+            <= record.payment_date
+            < next_month
+            and str(
+                record.payment_status or ""
+            ).lower()
+            not in ["pending", "cancelled"]
+        )
+
+        month_expense = sum(
+            float(record.amount or 0)
+            for record in all_expense_records
+            if record.expense_date
+            and month_start
+            <= record.expense_date
+            < next_month
+        )
+
+        monthly_data.append({
+            "month": month_start.strftime(
+                "%Y-%m"
+            ),
+            "label": month_start.strftime(
+                "%b %Y"
+            ),
+            "income": round(
+                month_income,
+                2,
+            ),
+            "expenses": round(
+                month_expense,
+                2,
+            ),
+            "profit": round(
+                month_income - month_expense,
+                2,
+            ),
+        })
+
+    # -----------------------------------------------------
+    # FINAL REPORT RESPONSE
+    # -----------------------------------------------------
+
+    return {
+        "period": month or "All Time",
+
+        "summary": {
+            "total_income": round(
+                total_income,
+                2,
+            ),
+            "total_expenses": round(
+                total_expenses,
+                2,
+            ),
+            "paid_expenses": round(
+                paid_expenses,
+                2,
+            ),
+            "pending_expenses": round(
+                pending_expenses,
+                2,
+            ),
+            "net_profit": round(
+                net_profit,
+                2,
+            ),
+            "profit_margin": round(
+                profit_margin,
+                1,
+            ),
+
+            "fuel_cost": round(
+                fuel_cost,
+                2,
+            ),
+            "maintenance_cost": round(
+                maintenance_cost,
+                2,
+            ),
+            "toll_cost": round(
+                category_totals["Toll"]["amount"],
+                2,
+            ),
+            "driver_salary": round(
+                category_totals[
+                    "Driver Salary"
+                ]["amount"],
+                2,
+            ),
+            "office_cost": round(
+                category_totals["Office"]["amount"],
+                2,
+            ),
+            "insurance_cost": round(
+                category_totals[
+                    "Insurance"
+                ]["amount"],
+                2,
+            ),
+            "repair_cost": round(
+                category_totals["Repair"]["amount"],
+                2,
+            ),
+            "other_cost": round(
+                category_totals["Other"]["amount"],
+                2,
+            ),
+
+            "total_vehicles": len(vehicles),
+            "total_trips": len(trips),
+            "income_records": len(
+                income_records
+            ),
+            "expense_records": len(
+                expense_records
+            ),
+        },
+
+        "monthly_data": monthly_data,
+        "expense_categories":
+            expense_categories,
+        "vehicle_reports":
+            vehicle_reports,
+    }

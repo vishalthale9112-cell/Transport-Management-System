@@ -20,9 +20,9 @@ import Income from "./pages/Income";
 import DriverTracking from "./pages/DriverTracking";
 import Placeholder from "./pages/Placeholder";
 import Expenses from "./pages/Expenses";
+import Reports from "./pages/Reports";
 
 const placeholders = [
-  ["/reports", "Reports"],
   ["/documents", "Documents"],
   ["/notifications", "Notifications"],
   ["/ai-assistant", "AI Assistant"],
@@ -113,6 +113,10 @@ function AdminLayout() {
             path="/expenses"
             element={<Expenses />}
          />
+         <Route
+            path="/reports"
+            element={<Reports />}
+          />
 
           {placeholders.map(([path, title]) => (
             <Route
