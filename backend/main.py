@@ -30,6 +30,14 @@ def ensure_database_columns():
     migrations = {
         "orders": {
             "customer_id": "INTEGER",
+            "vehicle_id": "INTEGER",
+            "goods_name": "VARCHAR DEFAULT ''",
+            "quantity": "VARCHAR DEFAULT ''",
+            "weight_kg": "FLOAT DEFAULT 0",
+            "receiver_name": "VARCHAR DEFAULT ''",
+            "receiver_phone": "VARCHAR DEFAULT ''",
+            "origin": "VARCHAR DEFAULT ''",
+            "destination": "VARCHAR DEFAULT ''",
         },
         "customers": {
             "phone": "VARCHAR DEFAULT ''",
@@ -517,6 +525,60 @@ def create_order(
             ),
         )
 
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.id
+            == order.vehicle_id
+        )
+        .first()
+    )
+
+    if not vehicle:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found",
+        )
+
+    goods_name = order.goods_name.strip()
+    receiver_name = order.receiver_name.strip()
+    receiver_phone = order.receiver_phone.strip()
+    origin = order.origin.strip()
+    destination = order.destination.strip()
+
+    if not goods_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Goods name is required",
+        )
+
+    if not receiver_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Receiver name is required",
+        )
+
+    if not receiver_phone:
+        raise HTTPException(
+            status_code=400,
+            detail="Receiver phone is required",
+        )
+
+    if not origin or not destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Pickup and destination are required",
+        )
+
+    if origin.lower() == destination.lower():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Pickup and destination "
+                "cannot be the same"
+            ),
+        )
+
     created_date = (
         order.created_at
         if order.created_at
@@ -527,6 +589,14 @@ def create_order(
         order_code=order_code,
         customer_id=customer.id,
         customer_name=customer.name,
+        vehicle_id=vehicle.id,
+        goods_name=goods_name,
+        quantity=order.quantity.strip(),
+        weight_kg=order.weight_kg,
+        receiver_name=receiver_name,
+        receiver_phone=receiver_phone,
+        origin=origin,
+        destination=destination,
         status=(
             order.status.strip()
             or "Pending"
@@ -537,8 +607,23 @@ def create_order(
 
     db.add(new_order)
 
+    new_trip = models.Trip(
+        vehicle_id=vehicle.id,
+        origin=origin,
+        destination=destination,
+        progress=0,
+        status="Ongoing",
+    )
+
+    db.add(new_trip)
+
     customer.total_orders = (
         int(customer.total_orders or 0)
+        + 1
+    )
+
+    customer.total_trips = (
+        int(customer.total_trips or 0)
         + 1
     )
 
@@ -1736,4 +1821,3 @@ def delete_customer(
         "ok": True,
         "message": "Customer deleted successfully",
     }
-

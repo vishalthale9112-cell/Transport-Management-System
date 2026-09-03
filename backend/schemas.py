@@ -96,12 +96,17 @@ class VehicleOut(BaseModel):
 
 class OrderCreate(BaseModel):
     order_code: str
-
-    customer_id: Optional[int] = None
+    customer_id: int
     customer_name: str = ""
-
+    vehicle_id: int
+    goods_name: str
+    quantity: str = ""
+    weight_kg: float = Field(default=0, ge=0)
+    receiver_name: str
+    receiver_phone: str
+    origin: str
+    destination: str
     status: str = "Pending"
-
     amount: float = Field(
         default=0,
         ge=0,
@@ -113,9 +118,15 @@ class OrderCreate(BaseModel):
 class OrderUpdate(BaseModel):
     customer_id: Optional[int] = None
     customer_name: Optional[str] = None
-
+    vehicle_id: Optional[int] = None
+    goods_name: Optional[str] = None
+    quantity: Optional[str] = None
+    weight_kg: Optional[float] = Field(default=None, ge=0)
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
     status: Optional[str] = None
-
     amount: Optional[float] = Field(
         default=None,
         ge=0,
@@ -130,10 +141,19 @@ class OrderOut(BaseModel):
 
     customer_id: Optional[int] = None
     customer_name: str
-
+    vehicle_id: Optional[int] = None
+    goods_name: str = ""
+    quantity: str = ""
+    weight_kg: float = 0
+    receiver_name: str = ""
+    receiver_phone: str = ""
+    origin: str = ""
+    destination: str = ""
     status: str
     amount: float
     created_at: Optional[date] = None
+
+    vehicle: Optional[VehicleOut] = None
 
     model_config = ConfigDict(
         from_attributes=True,

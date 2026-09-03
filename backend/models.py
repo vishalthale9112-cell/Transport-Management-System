@@ -59,6 +59,10 @@ class Vehicle(Base):
         "VehicleLocation",
         back_populates="vehicle",
     )
+    orders = relationship(
+        "Order",
+        back_populates="vehicle",
+    )
 
 
 class Customer(Base):
@@ -81,10 +85,10 @@ class Customer(Base):
     paid_amount = Column(Float, default=0)
     pending_amount = Column(Float, default=0)
     created_at = Column(
-    DateTime,
-    default=datetime.utcnow,
-    nullable=False,
-)
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
 
     orders = relationship("Order", back_populates="customer")
 
@@ -99,12 +103,25 @@ class Order(Base):
         ForeignKey("customers.id"),
         nullable=True,
     )
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=True,
+    )
     customer_name = Column(String, nullable=False)
+    goods_name = Column(String, default="")
+    quantity = Column(String, default="")
+    weight_kg = Column(Float, default=0)
+    receiver_name = Column(String, default="")
+    receiver_phone = Column(String, default="")
+    origin = Column(String, default="")
+    destination = Column(String, default="")
     status = Column(String, default="Pending")
     amount = Column(Float, default=0)
     created_at = Column(Date, default=date.today)
 
     customer = relationship("Customer", back_populates="orders")
+    vehicle = relationship("Vehicle", back_populates="orders")
 
 
 class Trip(Base):
