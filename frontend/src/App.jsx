@@ -16,12 +16,12 @@ import LiveTracking from "./pages/LiveTracking";
 import FuelManagement from "./pages/FuelManagement";
 import Maintenance from "./pages/Maintenance";
 import Customers from "./pages/Customers";
-import Placeholder from "./pages/Placeholder";
+import Income from "./pages/Income";
 import DriverTracking from "./pages/DriverTracking";
+import Placeholder from "./pages/Placeholder";
 
 
 const placeholders = [
-  ["/income", "Income"],
   ["/expenses", "Expenses"],
   ["/reports", "Reports"],
   ["/documents", "Documents"],
@@ -35,15 +35,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* DRIVER PUBLIC GPS PAGE */}
-
+        {/* Public GPS page for drivers */}
         <Route
           path="/driver-track/:token"
           element={<DriverTracking />}
         />
 
-        {/* ADMIN DASHBOARD */}
-
+        {/* Main admin dashboard */}
         <Route
           path="/*"
           element={<AdminLayout />}
@@ -108,13 +106,16 @@ function AdminLayout() {
             element={<Customers />}
           />
 
+          <Route
+            path="/income"
+            element={<Income />}
+          />
+
           {placeholders.map(([path, title]) => (
             <Route
               key={path}
               path={path}
-              element={
-                <Placeholder title={title} />
-              }
+              element={<Placeholder title={title} />}
             />
           ))}
         </Routes>

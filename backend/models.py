@@ -63,6 +63,10 @@ class Vehicle(Base):
         "Order",
         back_populates="vehicle",
     )
+    income_records = relationship(
+        "IncomeRecord",
+        back_populates="vehicle",
+    )
 
 
 class Customer(Base):
@@ -91,6 +95,10 @@ class Customer(Base):
     )
 
     orders = relationship("Order", back_populates="customer")
+    income_records = relationship(
+        "IncomeRecord",
+        back_populates="customer",
+    )
 
 
 class Order(Base):
@@ -122,6 +130,10 @@ class Order(Base):
 
     customer = relationship("Customer", back_populates="orders")
     vehicle = relationship("Vehicle", back_populates="orders")
+    income_records = relationship(
+        "IncomeRecord",
+        back_populates="order",
+    )
 
 
 class Trip(Base):
@@ -144,6 +156,47 @@ class MonthlyFinance(Base):
     month = Column(String, nullable=False)
     revenue = Column(Float, default=0)
     expenses = Column(Float, default=0)
+
+
+class IncomeRecord(Base):
+    __tablename__ = "income_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(
+        Integer,
+        ForeignKey("customers.id"),
+        nullable=False,
+    )
+    order_id = Column(
+        Integer,
+        ForeignKey("orders.id"),
+        nullable=True,
+    )
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=True,
+    )
+    amount = Column(Float, default=0, nullable=False)
+    payment_mode = Column(String, default="Cash")
+    payment_status = Column(String, default="Received")
+    transaction_reference = Column(String, default="")
+    notes = Column(String, default="")
+    payment_date = Column(Date, default=date.today, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    customer = relationship(
+        "Customer",
+        back_populates="income_records",
+    )
+    order = relationship(
+        "Order",
+        back_populates="income_records",
+    )
+    vehicle = relationship(
+        "Vehicle",
+        back_populates="income_records",
+    )
 
 
 class Alert(Base):

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import date, datetime
 from typing import Optional
 
@@ -557,6 +559,56 @@ class CustomerOut(BaseModel):
     pending_amount: float
 
     created_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
+
+
+# =========================================================
+# INCOME / PAYMENT SCHEMAS
+# =========================================================
+
+class IncomeCreate(BaseModel):
+    customer_id: int
+    order_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    amount: float = Field(..., gt=0)
+    payment_mode: str = "Cash"
+    payment_status: str = "Received"
+    transaction_reference: str = ""
+    notes: str = ""
+    payment_date: date
+
+
+class IncomeUpdate(BaseModel):
+    customer_id: Optional[int] = None
+    order_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    payment_mode: Optional[str] = None
+    payment_status: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    notes: Optional[str] = None
+    payment_date: Optional[date] = None
+
+
+class IncomeOut(BaseModel):
+    id: int
+    customer_id: int
+    order_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    amount: float
+    payment_mode: str
+    payment_status: str
+    transaction_reference: str = ""
+    notes: str = ""
+    payment_date: date
+    created_at: datetime
+
+    customer: Optional[CustomerOut] = None
+    order: Optional[OrderOut] = None
+    vehicle: Optional[VehicleOut] = None
 
     model_config = ConfigDict(
         from_attributes=True,

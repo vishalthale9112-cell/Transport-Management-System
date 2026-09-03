@@ -712,6 +712,490 @@ def delete_order(
 
 
 # =========================================================
+# INCOME / CUSTOMER PAYMENTS
+# =========================================================
+
+INCOME_APPLIED_STATUSES = {
+    "received",
+    "partial",
+}
+
+
+def normalize_payment_status(value: str) -> str:
+    status_map = {
+        "received": "Received",
+        "partial": "Partial",
+        "pending": "Pending",
+    }
+
+    normalized = status_map.get(
+        (value or "").strip().lower()
+    )
+
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Payment status must be "
+                "Received, Partial or Pending"
+            ),
+        )
+
+    return normalized
+
+
+def payment_is_applied(status: str) -> bool:
+    return (
+        (status or "").strip().lower()
+        in INCOME_APPLIED_STATUSES
+    )
+
+
+def update_customer_payment(
+    customer,
+    amount_change: float,
+):
+    updated_paid = max(
+        float(customer.paid_amount or 0)
+        + float(amount_change or 0),
+        0,
+    )
+
+    total_revenue = float(
+        customer.total_revenue or 0
+    )
+
+    if updated_paid > total_revenue:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Payment amount cannot be greater "
+                "than customer pending amount"
+            ),
+        )
+
+    customer.paid_amount = updated_paid
+    customer.pending_amount = max(
+        total_revenue - updated_paid,
+        0,
+    )
+
+
+@app.get(
+    "/api/income",
+    response_model=list[schemas.IncomeOut],
+)
+def list_income(
+    customer_id: int | None = None,
+    order_id: int | None = None,
+    payment_status: str = "",
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.IncomeRecord)
+
+    if customer_id is not None:
+        query = query.filter(
+            models.IncomeRecord.customer_id
+            == customer_id
+        )
+
+    if order_id is not None:
+        query = query.filter(
+            models.IncomeRecord.order_id
+            == order_id
+        )
+
+    if payment_status.strip():
+        query = query.filter(
+            models.IncomeRecord.payment_status
+            == payment_status.strip()
+        )
+
+    return (
+        query
+        .order_by(
+            models.IncomeRecord.payment_date.desc(),
+            models.IncomeRecord.id.desc(),
+        )
+        .all()
+    )
+
+
+@app.get("/api/income/summary")
+def get_income_summary(
+    db: Session = Depends(get_db),
+):
+    records = db.query(models.IncomeRecord).all()
+    customers = db.query(models.Customer).all()
+    today = date.today()
+
+    received_records = [
+        record
+        for record in records
+        if payment_is_applied(
+            record.payment_status
+        )
+    ]
+
+    total_income = sum(
+        float(record.amount or 0)
+        for record in received_records
+    )
+
+    this_month_income = sum(
+        float(record.amount or 0)
+        for record in received_records
+        if (
+            record.payment_date.year
+            == today.year
+            and record.payment_date.month
+            == today.month
+        )
+    )
+
+    pending_amount = sum(
+        float(customer.pending_amount or 0)
+        for customer in customers
+    )
+
+    return {
+        "total_income": round(total_income, 2),
+        "this_month_income": round(
+            this_month_income,
+            2,
+        ),
+        "pending_amount": round(
+            pending_amount,
+            2,
+        ),
+        "payment_count": len(records),
+    }
+
+
+@app.post(
+    "/api/income",
+    response_model=schemas.IncomeOut,
+    status_code=201,
+)
+def create_income(
+    income: schemas.IncomeCreate,
+    db: Session = Depends(get_db),
+):
+    customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id
+            == income.customer_id
+        )
+        .first()
+    )
+
+    if not customer:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found",
+        )
+
+    order = None
+
+    if income.order_id is not None:
+        order = (
+            db.query(models.Order)
+            .filter(
+                models.Order.id
+                == income.order_id
+            )
+            .first()
+        )
+
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found",
+            )
+
+        if order.customer_id != customer.id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Selected order does not belong "
+                    "to this customer"
+                ),
+            )
+
+    vehicle_id = (
+        income.vehicle_id
+        if income.vehicle_id is not None
+        else (order.vehicle_id if order else None)
+    )
+
+    if vehicle_id is not None:
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id
+                == vehicle_id
+            )
+            .first()
+        )
+
+        if not vehicle:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found",
+            )
+
+    payment_status = normalize_payment_status(
+        income.payment_status
+    )
+
+    if payment_is_applied(payment_status):
+        update_customer_payment(
+            customer,
+            income.amount,
+        )
+
+    record = models.IncomeRecord(
+        customer_id=customer.id,
+        order_id=income.order_id,
+        vehicle_id=vehicle_id,
+        amount=income.amount,
+        payment_mode=(
+            income.payment_mode.strip()
+            or "Cash"
+        ),
+        payment_status=payment_status,
+        transaction_reference=(
+            income.transaction_reference.strip()
+        ),
+        notes=income.notes.strip(),
+        payment_date=income.payment_date,
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+
+@app.put(
+    "/api/income/{income_id}",
+    response_model=schemas.IncomeOut,
+)
+def update_income(
+    income_id: int,
+    income: schemas.IncomeUpdate,
+    db: Session = Depends(get_db),
+):
+    record = (
+        db.query(models.IncomeRecord)
+        .filter(
+            models.IncomeRecord.id
+            == income_id
+        )
+        .first()
+    )
+
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Income record not found",
+        )
+
+    data = income.model_dump(
+        exclude_unset=True
+    )
+
+    old_customer = record.customer
+    old_applied_amount = (
+        float(record.amount or 0)
+        if payment_is_applied(
+            record.payment_status
+        )
+        else 0
+    )
+
+    new_customer_id = data.get(
+        "customer_id",
+        record.customer_id,
+    )
+
+    if new_customer_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer is required",
+        )
+
+    new_customer = (
+        db.query(models.Customer)
+        .filter(
+            models.Customer.id
+            == new_customer_id
+        )
+        .first()
+    )
+
+    if not new_customer:
+        raise HTTPException(
+            status_code=404,
+            detail="Customer not found",
+        )
+
+    new_order_id = data.get(
+        "order_id",
+        record.order_id,
+    )
+    new_order = None
+
+    if new_order_id is not None:
+        new_order = (
+            db.query(models.Order)
+            .filter(
+                models.Order.id
+                == new_order_id
+            )
+            .first()
+        )
+
+        if not new_order:
+            raise HTTPException(
+                status_code=404,
+                detail="Order not found",
+            )
+
+        if new_order.customer_id != new_customer.id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Selected order does not belong "
+                    "to this customer"
+                ),
+            )
+
+    new_status = normalize_payment_status(
+        data.get(
+            "payment_status",
+            record.payment_status,
+        )
+    )
+    new_amount = float(
+        data.get("amount", record.amount)
+    )
+    new_applied_amount = (
+        new_amount
+        if payment_is_applied(new_status)
+        else 0
+    )
+
+    if old_customer.id == new_customer.id:
+        update_customer_payment(
+            old_customer,
+            new_applied_amount
+            - old_applied_amount,
+        )
+    else:
+        update_customer_payment(
+            old_customer,
+            -old_applied_amount,
+        )
+        update_customer_payment(
+            new_customer,
+            new_applied_amount,
+        )
+
+    new_vehicle_id = data.get(
+        "vehicle_id",
+        record.vehicle_id,
+    )
+
+    if new_vehicle_id is None and new_order:
+        new_vehicle_id = new_order.vehicle_id
+
+    if new_vehicle_id is not None:
+        vehicle_exists = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id
+                == new_vehicle_id
+            )
+            .first()
+        )
+
+        if not vehicle_exists:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found",
+            )
+
+    record.customer_id = new_customer.id
+    record.order_id = new_order_id
+    record.vehicle_id = new_vehicle_id
+    record.amount = new_amount
+    record.payment_status = new_status
+
+    for field_name in [
+        "payment_mode",
+        "transaction_reference",
+        "notes",
+    ]:
+        if field_name in data:
+            value = data[field_name]
+            setattr(
+                record,
+                field_name,
+                (value or "").strip(),
+            )
+
+    if "payment_date" in data:
+        record.payment_date = data[
+            "payment_date"
+        ]
+
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+
+@app.delete("/api/income/{income_id}")
+def delete_income(
+    income_id: int,
+    db: Session = Depends(get_db),
+):
+    record = (
+        db.query(models.IncomeRecord)
+        .filter(
+            models.IncomeRecord.id
+            == income_id
+        )
+        .first()
+    )
+
+    if not record:
+        raise HTTPException(
+            status_code=404,
+            detail="Income record not found",
+        )
+
+    if payment_is_applied(
+        record.payment_status
+    ):
+        update_customer_payment(
+            record.customer,
+            -float(record.amount or 0),
+        )
+
+    db.delete(record)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": "Income record deleted",
+    }
+
+
+# =========================================================
 # TRIPS
 # =========================================================
 
