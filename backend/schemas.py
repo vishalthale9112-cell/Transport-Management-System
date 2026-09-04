@@ -741,3 +741,48 @@ class DocumentOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
+
+# =========================================================
+# NOTIFICATION SCHEMAS
+# =========================================================
+
+class NotificationCreate(BaseModel):
+    notification_type: str = "General"
+    title: str
+    message: str = ""
+    priority: str = "Medium"
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+    document_id: Optional[int] = None
+
+    due_date: Optional[date] = None
+    action_url: str = ""
+
+
+class NotificationOut(BaseModel):
+    id: int
+    notification_type: str
+    title: str
+    message: str
+    priority: str
+    is_read: bool
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+    document_id: Optional[int] = None
+
+    due_date: Optional[date] = None
+    action_url: str
+    event_key: Optional[str] = None
+
+    created_at: datetime
+    read_at: Optional[datetime] = None
+
+    vehicle: Optional[VehicleOut] = None
+    driver: Optional[DriverOut] = None
+    document: Optional[DocumentOut] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )

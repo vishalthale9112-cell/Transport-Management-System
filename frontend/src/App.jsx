@@ -1,7 +1,7 @@
 import {
   BrowserRouter,
-  Routes,
   Route,
+  Routes,
 } from "react-router-dom";
 
 import Sidebar from "./components/Sidebar";
@@ -13,34 +13,31 @@ import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Trips from "./pages/Trips";
 import LiveTracking from "./pages/LiveTracking";
+import DriverTracking from "./pages/DriverTracking";
 import FuelManagement from "./pages/FuelManagement";
 import Maintenance from "./pages/Maintenance";
 import Customers from "./pages/Customers";
 import Income from "./pages/Income";
-import DriverTracking from "./pages/DriverTracking";
-import Placeholder from "./pages/Placeholder";
 import Expenses from "./pages/Expenses";
 import Reports from "./pages/Reports";
 import Documents from "./pages/Documents";
+import Notifications from "./pages/Notifications";
+import Placeholder from "./pages/Placeholder";
 
 const placeholders = [
-  ["/notifications", "Notifications"],
   ["/ai-assistant", "AI Assistant"],
   ["/settings", "Settings"],
 ];
-
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public GPS page for drivers */}
         <Route
           path="/driver-track/:token"
           element={<DriverTracking />}
         />
 
-        {/* Main admin dashboard */}
         <Route
           path="/*"
           element={<AdminLayout />}
@@ -49,7 +46,6 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
 
 function AdminLayout() {
   return (
@@ -109,17 +105,25 @@ function AdminLayout() {
             path="/income"
             element={<Income />}
           />
+
           <Route
             path="/expenses"
             element={<Expenses />}
-         />
-         <Route
+          />
+
+          <Route
             path="/reports"
             element={<Reports />}
           />
+
           <Route
             path="/documents"
             element={<Documents />}
+          />
+
+          <Route
+            path="/notifications"
+            element={<Notifications />}
           />
 
           {placeholders.map(([path, title]) => (

@@ -438,3 +438,96 @@ class TransportDocument(Base):
 
     vehicle = relationship("Vehicle")
     driver = relationship("Driver")
+
+# =========================================================
+# NOTIFICATIONS
+# =========================================================
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    notification_type = Column(
+        String,
+        default="General",
+        nullable=False,
+    )
+
+    title = Column(
+        String,
+        nullable=False,
+    )
+
+    message = Column(
+        String,
+        default="",
+    )
+
+    priority = Column(
+        String,
+        default="Medium",
+        nullable=False,
+    )
+
+    is_read = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=True,
+    )
+
+    driver_id = Column(
+        Integer,
+        ForeignKey("drivers.id"),
+        nullable=True,
+    )
+
+    document_id = Column(
+        Integer,
+        ForeignKey("transport_documents.id"),
+        nullable=True,
+    )
+
+    due_date = Column(
+        Date,
+        nullable=True,
+    )
+
+    action_url = Column(
+        String,
+        default="",
+    )
+
+    event_key = Column(
+        String,
+        unique=True,
+        index=True,
+        nullable=True,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    read_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")
+    document = relationship(
+        "TransportDocument"
+    )

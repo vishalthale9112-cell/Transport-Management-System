@@ -3741,3 +3741,623 @@ def delete_document(
         "ok": True,
         "message": "Document deleted successfully",
     }
+
+# =========================================================
+# NOTIFICATION HELPERS
+# =========================================================
+
+def notification_to_response(notification):
+    document_data = None
+
+    if notification.document:
+        document_data = document_to_response(
+            notification.document
+        )
+
+    return {
+        "id": notification.id,
+        "notification_type": (
+            notification.notification_type
+        ),
+        "title": notification.title,
+        "message": notification.message or "",
+        "priority": notification.priority,
+        "is_read": notification.is_read,
+        "vehicle_id": notification.vehicle_id,
+        "driver_id": notification.driver_id,
+        "document_id": notification.document_id,
+        "due_date": notification.due_date,
+        "action_url": (
+            notification.action_url or ""
+        ),
+        "event_key": notification.event_key,
+        "created_at": notification.created_at,
+        "read_at": notification.read_at,
+        "vehicle": notification.vehicle,
+        "driver": notification.driver,
+        "document": document_data,
+    }
+
+
+def create_or_update_notification(
+    db: Session,
+    *,
+    event_key: str,
+    notification_type: str,
+    title: str,
+    message: str,
+    priority: str,
+    due_date=None,
+    vehicle_id=None,
+    driver_id=None,
+    document_id=None,
+    action_url="",
+):
+    notification = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.event_key
+            == event_key
+        )
+        .first()
+    )
+
+    if notification:
+        important_change = (
+            notification.title != title
+            or notification.priority != priority
+            or notification.due_date != due_date
+        )
+
+        notification.notification_type = (
+            notification_type
+        )
+        notification.title = title
+        notification.message = message
+        notification.priority = priority
+        notification.due_date = due_date
+        notification.vehicle_id = vehicle_id
+        notification.driver_id = driver_id
+        notification.document_id = document_id
+        notification.action_url = action_url
+
+        if important_change:
+            notification.is_read = False
+            notification.read_at = None
+
+        return notification
+
+    notification = models.Notification(
+        event_key=event_key,
+        notification_type=notification_type,
+        title=title,
+        message=message,
+        priority=priority,
+        due_date=due_date,
+        vehicle_id=vehicle_id,
+        driver_id=driver_id,
+        document_id=document_id,
+        action_url=action_url,
+    )
+
+    db.add(notification)
+
+    return notification
+
+
+def sync_automatic_notifications(
+    db: Session,
+):
+    today = date.today()
+    active_event_keys = set()
+
+    # -----------------------------------------------------
+    # DOCUMENT EXPIRY ALERTS
+    # -----------------------------------------------------
+
+    documents = (
+        db.query(models.TransportDocument)
+        .filter(
+            models.TransportDocument.expiry_date
+            .isnot(None)
+        )
+        .all()
+    )
+
+    for document in documents:
+        days_remaining = (
+            document.expiry_date - today
+        ).days
+
+        if days_remaining > 30:
+            continue
+
+        event_key = (
+            f"document-expiry-{document.id}"
+        )
+
+        active_event_keys.add(event_key)
+
+        document_name = (
+            document.document_number
+            or document.document_type
+        )
+
+        if days_remaining < 0:
+            title = "Document Expired"
+            priority = "High"
+            message = (
+                f"{document.document_type} "
+                f"({document_name}) expired "
+                f"{abs(days_remaining)} days ago."
+            )
+
+        elif days_remaining == 0:
+            title = "Document Expires Today"
+            priority = "High"
+            message = (
+                f"{document.document_type} "
+                f"({document_name}) expires today."
+            )
+
+        elif days_remaining <= 7:
+            title = "Urgent Document Expiry"
+            priority = "High"
+            message = (
+                f"{document.document_type} "
+                f"({document_name}) expires in "
+                f"{days_remaining} days."
+            )
+
+        else:
+            title = "Document Expiring Soon"
+            priority = "Medium"
+            message = (
+                f"{document.document_type} "
+                f"({document_name}) expires in "
+                f"{days_remaining} days."
+            )
+
+        create_or_update_notification(
+            db,
+            event_key=event_key,
+            notification_type="Document Expiry",
+            title=title,
+            message=message,
+            priority=priority,
+            due_date=document.expiry_date,
+            vehicle_id=document.vehicle_id,
+            driver_id=document.driver_id,
+            document_id=document.id,
+            action_url="/documents",
+        )
+
+    # -----------------------------------------------------
+    # VEHICLE INSURANCE ALERTS
+    # -----------------------------------------------------
+
+    vehicles_with_insurance = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.insurance_expiry
+            .isnot(None)
+        )
+        .all()
+    )
+
+    for vehicle in vehicles_with_insurance:
+        days_remaining = (
+            vehicle.insurance_expiry - today
+        ).days
+
+        if days_remaining > 30:
+            continue
+
+        event_key = (
+            f"vehicle-insurance-{vehicle.id}"
+        )
+
+        active_event_keys.add(event_key)
+
+        if days_remaining < 0:
+            title = "Vehicle Insurance Expired"
+            priority = "High"
+            message = (
+                f"{vehicle.registration_number} "
+                f"insurance expired "
+                f"{abs(days_remaining)} days ago."
+            )
+
+        elif days_remaining == 0:
+            title = "Insurance Expires Today"
+            priority = "High"
+            message = (
+                f"{vehicle.registration_number} "
+                f"insurance expires today."
+            )
+
+        elif days_remaining <= 7:
+            title = "Urgent Insurance Renewal"
+            priority = "High"
+            message = (
+                f"{vehicle.registration_number} "
+                f"insurance expires in "
+                f"{days_remaining} days."
+            )
+
+        else:
+            title = "Insurance Expiring Soon"
+            priority = "Medium"
+            message = (
+                f"{vehicle.registration_number} "
+                f"insurance expires in "
+                f"{days_remaining} days."
+            )
+
+        create_or_update_notification(
+            db,
+            event_key=event_key,
+            notification_type="Insurance",
+            title=title,
+            message=message,
+            priority=priority,
+            due_date=vehicle.insurance_expiry,
+            vehicle_id=vehicle.id,
+            action_url="/vehicles",
+        )
+
+    # -----------------------------------------------------
+    # VEHICLE SERVICE ALERTS
+    # -----------------------------------------------------
+
+    vehicles = (
+        db.query(models.Vehicle)
+        .all()
+    )
+
+    for vehicle in vehicles:
+        service_days = (
+            vehicle.service_due_in_days
+        )
+
+        if (
+            service_days is None
+            or service_days > 7
+        ):
+            continue
+
+        event_key = (
+            f"vehicle-service-{vehicle.id}"
+        )
+
+        active_event_keys.add(event_key)
+
+        if service_days < 0:
+            title = "Vehicle Service Overdue"
+            priority = "High"
+            message = (
+                f"{vehicle.registration_number} "
+                f"service is overdue by "
+                f"{abs(service_days)} days."
+            )
+
+        elif service_days == 0:
+            title = "Vehicle Service Due Today"
+            priority = "High"
+            message = (
+                f"{vehicle.registration_number} "
+                f"service is due today."
+            )
+
+        else:
+            title = "Vehicle Service Due Soon"
+            priority = (
+                "High"
+                if service_days <= 3
+                else "Medium"
+            )
+            message = (
+                f"{vehicle.registration_number} "
+                f"service is due in "
+                f"{service_days} days."
+            )
+
+        create_or_update_notification(
+            db,
+            event_key=event_key,
+            notification_type="Maintenance",
+            title=title,
+            message=message,
+            priority=priority,
+            vehicle_id=vehicle.id,
+            action_url="/maintenance",
+        )
+
+    # -----------------------------------------------------
+    # REMOVE OLD AUTOMATIC ALERTS
+    # -----------------------------------------------------
+
+    automatic_notifications = (
+        db.query(models.Notification)
+        .filter(
+            or_(
+                models.Notification.event_key.like(
+                    "document-expiry-%"
+                ),
+                models.Notification.event_key.like(
+                    "vehicle-insurance-%"
+                ),
+                models.Notification.event_key.like(
+                    "vehicle-service-%"
+                ),
+            )
+        )
+        .all()
+    )
+
+    for notification in automatic_notifications:
+        if (
+            notification.event_key
+            not in active_event_keys
+        ):
+            db.delete(notification)
+
+    db.commit()
+
+# =========================================================
+# NOTIFICATIONS SUMMARY
+# =========================================================
+
+@app.get("/api/notifications/summary")
+def get_notifications_summary(
+    db: Session = Depends(get_db),
+):
+    sync_automatic_notifications(db)
+
+    notifications = (
+        db.query(models.Notification)
+        .all()
+    )
+
+    return {
+        "total_notifications": len(notifications),
+        "unread_notifications": sum(
+            1
+            for item in notifications
+            if not item.is_read
+        ),
+        "high_priority": sum(
+            1
+            for item in notifications
+            if (
+                item.priority == "High"
+                and not item.is_read
+            )
+        ),
+        "document_alerts": sum(
+            1
+            for item in notifications
+            if item.notification_type
+            == "Document Expiry"
+        ),
+        "maintenance_alerts": sum(
+            1
+            for item in notifications
+            if item.notification_type
+            == "Maintenance"
+        ),
+        "insurance_alerts": sum(
+            1
+            for item in notifications
+            if item.notification_type
+            == "Insurance"
+        ),
+    }
+
+
+# =========================================================
+# LIST NOTIFICATIONS
+# =========================================================
+
+@app.get(
+    "/api/notifications",
+    response_model=list[schemas.NotificationOut],
+)
+def list_notifications(
+    search: str = "",
+    notification_type: str = "",
+    priority: str = "",
+    unread_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    sync_automatic_notifications(db)
+
+    query = db.query(models.Notification)
+
+    if search.strip():
+        search_value = f"%{search.strip()}%"
+
+        query = query.filter(
+            or_(
+                models.Notification.title.ilike(
+                    search_value
+                ),
+                models.Notification.message.ilike(
+                    search_value
+                ),
+            )
+        )
+
+    if notification_type.strip():
+        query = query.filter(
+            models.Notification.notification_type
+            == notification_type.strip()
+        )
+
+    if priority.strip():
+        query = query.filter(
+            models.Notification.priority
+            == priority.strip()
+        )
+
+    if unread_only:
+        query = query.filter(
+            models.Notification.is_read.is_(False)
+        )
+
+    notifications = (
+        query.order_by(
+            models.Notification.is_read.asc(),
+            models.Notification.created_at.desc(),
+        )
+        .all()
+    )
+
+    return [
+        notification_to_response(notification)
+        for notification in notifications
+    ]
+
+
+# =========================================================
+# MARK ALL AS READ
+# =========================================================
+
+@app.patch("/api/notifications/read-all")
+def mark_all_notifications_as_read(
+    db: Session = Depends(get_db),
+):
+    sync_automatic_notifications(db)
+
+    unread_notifications = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.is_read.is_(False)
+        )
+        .all()
+    )
+
+    read_time = datetime.utcnow()
+
+    for notification in unread_notifications:
+        notification.is_read = True
+        notification.read_at = read_time
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "updated_count": len(
+            unread_notifications
+        ),
+        "message": (
+            "All notifications marked as read"
+        ),
+    }
+
+
+# =========================================================
+# CLEAR READ NOTIFICATIONS
+# =========================================================
+
+@app.delete("/api/notifications/clear-read")
+def clear_read_notifications(
+    db: Session = Depends(get_db),
+):
+    read_notifications = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.is_read.is_(True)
+        )
+        .all()
+    )
+
+    for notification in read_notifications:
+        db.delete(notification)
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "deleted_count": len(
+            read_notifications
+        ),
+        "message": (
+            "Read notifications cleared"
+        ),
+    }
+
+
+# =========================================================
+# MARK ONE NOTIFICATION AS READ
+# =========================================================
+
+@app.patch(
+    "/api/notifications/{notification_id}/read",
+    response_model=schemas.NotificationOut,
+)
+def mark_notification_as_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+):
+    notification = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.id
+            == notification_id
+        )
+        .first()
+    )
+
+    if not notification:
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found",
+        )
+
+    notification.is_read = True
+    notification.read_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(notification)
+
+    return notification_to_response(
+        notification
+    )
+
+
+# =========================================================
+# DELETE NOTIFICATION
+# =========================================================
+
+@app.delete(
+    "/api/notifications/{notification_id}"
+)
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+):
+    notification = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.id
+            == notification_id
+        )
+        .first()
+    )
+
+    if not notification:
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found",
+        )
+
+    db.delete(notification)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": (
+            "Notification deleted successfully"
+        ),
+    }
