@@ -348,3 +348,93 @@ class VehicleLocation(Base):
     recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     vehicle = relationship("Vehicle", back_populates="locations")
+
+
+# =========================================================
+# DOCUMENT MANAGEMENT
+# =========================================================
+
+class TransportDocument(Base):
+    __tablename__ = "transport_documents"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    document_type = Column(
+        String,
+        nullable=False,
+    )
+
+    document_number = Column(
+        String,
+        default="",
+    )
+
+    vehicle_id = Column(
+        Integer,
+        ForeignKey("vehicles.id"),
+        nullable=True,
+    )
+
+    driver_id = Column(
+        Integer,
+        ForeignKey("drivers.id"),
+        nullable=True,
+    )
+
+    issuing_authority = Column(
+        String,
+        default="",
+    )
+
+    issue_date = Column(
+        Date,
+        nullable=True,
+    )
+
+    expiry_date = Column(
+        Date,
+        nullable=True,
+    )
+
+    file_name = Column(
+        String,
+        default="",
+    )
+
+    stored_file_name = Column(
+        String,
+        default="",
+    )
+
+    file_url = Column(
+        String,
+        default="",
+    )
+
+    content_type = Column(
+        String,
+        default="",
+    )
+
+    file_size = Column(
+        Integer,
+        default=0,
+    )
+
+    notes = Column(
+        String,
+        default="",
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    vehicle = relationship("Vehicle")
+    driver = relationship("Driver")

@@ -679,3 +679,65 @@ class IncomeOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
+
+# =========================================================
+# DOCUMENT MANAGEMENT SCHEMAS
+# =========================================================
+
+class DocumentCreate(BaseModel):
+    document_type: str
+    document_number: str = ""
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+    issuing_authority: str = ""
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    notes: str = ""
+
+
+class DocumentUpdate(BaseModel):
+    document_type: Optional[str] = None
+    document_number: Optional[str] = None
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+    issuing_authority: Optional[str] = None
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class DocumentOut(BaseModel):
+    id: int
+
+    document_type: str
+    document_number: str
+
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+    issuing_authority: str
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+
+    file_name: str
+    stored_file_name: str
+    file_url: str
+    content_type: str
+    file_size: int
+
+    notes: str
+    created_at: datetime
+
+    expiry_status: str = "No Expiry"
+    days_remaining: Optional[int] = None
+
+    vehicle: Optional[VehicleOut] = None
+    driver: Optional[DriverOut] = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )

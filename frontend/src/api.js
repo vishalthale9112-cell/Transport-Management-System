@@ -311,3 +311,88 @@ export const getReportsDashboard = (
     .get(`/reports/dashboard${query}`)
     .then((response) => response.data);
 };
+// =========================================================
+// DOCUMENT MANAGEMENT API
+// =========================================================
+
+export const getDocuments = ({
+  search = "",
+  documentType = "",
+  expiryStatus = "",
+  vehicleId = "",
+  driverId = "",
+} = {}) =>
+  api
+    .get("/documents", {
+      params: {
+        search: search || undefined,
+        document_type:
+          documentType || undefined,
+        expiry_status:
+          expiryStatus || undefined,
+        vehicle_id:
+          vehicleId || undefined,
+        driver_id:
+          driverId || undefined,
+      },
+    })
+    .then((response) => response.data);
+
+
+export const getDocumentsSummary = () =>
+  api
+    .get("/documents/summary")
+    .then((response) => response.data);
+
+
+export const uploadDocument = (formData) =>
+  api
+    .post("/documents/upload", formData)
+    .then((response) => response.data);
+
+
+export const updateDocument = (
+  documentId,
+  documentData
+) =>
+  api
+    .put(
+      `/documents/${documentId}`,
+      documentData
+    )
+    .then((response) => response.data);
+
+
+export const deleteDocument = (documentId) =>
+  api
+    .delete(`/documents/${documentId}`)
+    .then((response) => response.data);
+
+
+export const getDocumentDownloadUrl = (
+  documentId
+) =>
+  `${API_BASE}/documents/${documentId}/download`;
+
+
+export const getDocumentViewUrl = (fileUrl) => {
+  if (!fileUrl) return "";
+
+  if (
+    fileUrl.startsWith("http://") ||
+    fileUrl.startsWith("https://")
+  ) {
+    return fileUrl;
+  }
+
+  const backendBase = API_BASE.replace(
+    /\/api$/,
+    ""
+  );
+
+  return `${backendBase}${
+    fileUrl.startsWith("/")
+      ? fileUrl
+      : `/${fileUrl}`
+  }`;
+};

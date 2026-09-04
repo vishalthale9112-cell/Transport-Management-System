@@ -10,8 +10,14 @@ import models
 import schemas
 
 from database import engine, get_db, Base
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, or_
+import uuid
+from pathlib import Path
+from typing import Optional
 
+from fastapi import File, Form, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # =========================================================
 # CREATE DATABASE TABLES
@@ -89,6 +95,24 @@ ensure_database_columns()
 app = FastAPI(
     title="Thale Transport API",
     version="0.1.0"
+)
+
+# =========================================================
+# DOCUMENT FILE STORAGE
+# =========================================================
+
+UPLOAD_ROOT = Path(__file__).resolve().parent / "uploads"
+DOCUMENT_UPLOAD_DIR = UPLOAD_ROOT / "documents"
+
+DOCUMENT_UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=str(UPLOAD_ROOT)),
+    name="uploads",
 )
 
 
@@ -3123,4 +3147,597 @@ def get_reports_dashboard(
             expense_categories,
         "vehicle_reports":
             vehicle_reports,
+    }
+
+# =========================================================
+# DOCUMENT MANAGEMENT HELPERS
+# =========================================================
+
+MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024
+
+ALLOWED_DOCUMENT_CONTENT_TYPES = {
+    "application/pdf": ".pdf",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
+
+
+def parse_document_date(
+    value: Optional[str],
+    field_name: str,
+):
+    if not value or not value.strip():
+        return None
+
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} must be YYYY-MM-DD",
+        )
+
+
+def get_document_expiry_details(expiry_date):
+    if expiry_date is None:
+        return "No Expiry", None
+
+    days_remaining = (
+        expiry_date - date.today()
+    ).days
+
+    if days_remaining < 0:
+        return "Expired", days_remaining
+
+    if days_remaining <= 30:
+        return "Expiring Soon", days_remaining
+
+    return "Valid", days_remaining
+
+
+def document_to_response(document):
+    expiry_status, days_remaining = (
+        get_document_expiry_details(
+            document.expiry_date
+        )
+    )
+
+    return {
+        "id": document.id,
+        "document_type": document.document_type,
+        "document_number": (
+            document.document_number or ""
+        ),
+        "vehicle_id": document.vehicle_id,
+        "driver_id": document.driver_id,
+        "issuing_authority": (
+            document.issuing_authority or ""
+        ),
+        "issue_date": document.issue_date,
+        "expiry_date": document.expiry_date,
+        "file_name": document.file_name or "",
+        "stored_file_name": (
+            document.stored_file_name or ""
+        ),
+        "file_url": document.file_url or "",
+        "content_type": (
+            document.content_type or ""
+        ),
+        "file_size": document.file_size or 0,
+        "notes": document.notes or "",
+        "created_at": document.created_at,
+        "expiry_status": expiry_status,
+        "days_remaining": days_remaining,
+        "vehicle": document.vehicle,
+        "driver": document.driver,
+    }
+
+
+def validate_document_assignment(
+    db: Session,
+    vehicle_id: Optional[int],
+    driver_id: Optional[int],
+):
+    if vehicle_id is not None:
+        vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle.id == vehicle_id
+            )
+            .first()
+        )
+
+        if not vehicle:
+            raise HTTPException(
+                status_code=404,
+                detail="Vehicle not found",
+            )
+
+    if driver_id is not None:
+        driver = (
+            db.query(models.Driver)
+            .filter(
+                models.Driver.id == driver_id
+            )
+            .first()
+        )
+
+        if not driver:
+            raise HTTPException(
+                status_code=404,
+                detail="Driver not found",
+            )
+
+
+# =========================================================
+# DOCUMENT SUMMARY
+# =========================================================
+
+@app.get("/api/documents/summary")
+def get_documents_summary(
+    db: Session = Depends(get_db),
+):
+    documents = (
+        db.query(models.TransportDocument)
+        .all()
+    )
+
+    summary = {
+        "total_documents": len(documents),
+        "valid_documents": 0,
+        "expiring_soon": 0,
+        "expired_documents": 0,
+        "no_expiry": 0,
+    }
+
+    for document in documents:
+        expiry_status, _ = (
+            get_document_expiry_details(
+                document.expiry_date
+            )
+        )
+
+        if expiry_status == "Valid":
+            summary["valid_documents"] += 1
+        elif expiry_status == "Expiring Soon":
+            summary["expiring_soon"] += 1
+        elif expiry_status == "Expired":
+            summary["expired_documents"] += 1
+        else:
+            summary["no_expiry"] += 1
+
+    return summary
+
+
+# =========================================================
+# LIST DOCUMENTS
+# =========================================================
+
+@app.get(
+    "/api/documents",
+    response_model=list[schemas.DocumentOut],
+)
+def list_documents(
+    search: str = "",
+    document_type: str = "",
+    expiry_status: str = "",
+    vehicle_id: Optional[int] = None,
+    driver_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(models.TransportDocument)
+        .outerjoin(
+            models.Vehicle,
+            models.TransportDocument.vehicle_id
+            == models.Vehicle.id,
+        )
+        .outerjoin(
+            models.Driver,
+            models.TransportDocument.driver_id
+            == models.Driver.id,
+        )
+    )
+
+    if search.strip():
+        search_value = f"%{search.strip()}%"
+
+        query = query.filter(
+            or_(
+                models.TransportDocument
+                .document_type
+                .ilike(search_value),
+
+                models.TransportDocument
+                .document_number
+                .ilike(search_value),
+
+                models.TransportDocument
+                .issuing_authority
+                .ilike(search_value),
+
+                models.Vehicle
+                .registration_number
+                .ilike(search_value),
+
+                models.Driver
+                .name
+                .ilike(search_value),
+            )
+        )
+
+    if document_type.strip():
+        query = query.filter(
+            models.TransportDocument.document_type
+            == document_type.strip()
+        )
+
+    if vehicle_id is not None:
+        query = query.filter(
+            models.TransportDocument.vehicle_id
+            == vehicle_id
+        )
+
+    if driver_id is not None:
+        query = query.filter(
+            models.TransportDocument.driver_id
+            == driver_id
+        )
+
+    documents = (
+        query.order_by(
+            models.TransportDocument.id.desc()
+        )
+        .all()
+    )
+
+    results = [
+        document_to_response(document)
+        for document in documents
+    ]
+
+    if expiry_status.strip():
+        selected_status = expiry_status.strip()
+
+        results = [
+            document
+            for document in results
+            if document["expiry_status"]
+            == selected_status
+        ]
+
+    return results
+
+
+# =========================================================
+# UPLOAD DOCUMENT
+# =========================================================
+
+@app.post(
+    "/api/documents/upload",
+    response_model=schemas.DocumentOut,
+    status_code=201,
+)
+async def upload_document(
+    document_type: str = Form(...),
+    document_number: str = Form(""),
+    vehicle_id: Optional[int] = Form(None),
+    driver_id: Optional[int] = Form(None),
+    issuing_authority: str = Form(""),
+    issue_date: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    notes: str = Form(""),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    clean_document_type = document_type.strip()
+
+    if not clean_document_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Document type is required",
+        )
+
+    validate_document_assignment(
+        db,
+        vehicle_id,
+        driver_id,
+    )
+
+    parsed_issue_date = parse_document_date(
+        issue_date,
+        "Issue date",
+    )
+
+    parsed_expiry_date = parse_document_date(
+        expiry_date,
+        "Expiry date",
+    )
+
+    if (
+        parsed_issue_date
+        and parsed_expiry_date
+        and parsed_expiry_date
+        < parsed_issue_date
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Expiry date cannot be before "
+                "issue date"
+            ),
+        )
+
+    if (
+        file.content_type
+        not in ALLOWED_DOCUMENT_CONTENT_TYPES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only PDF, JPG and PNG files "
+                "are allowed"
+            ),
+        )
+
+    file_content = await file.read(
+        MAX_DOCUMENT_FILE_SIZE + 1
+    )
+
+    if not file_content:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file is empty",
+        )
+
+    if len(file_content) > MAX_DOCUMENT_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail="File size must be 10 MB or less",
+        )
+
+    extension = (
+        ALLOWED_DOCUMENT_CONTENT_TYPES[
+            file.content_type
+        ]
+    )
+
+    stored_file_name = (
+        f"{uuid.uuid4().hex}{extension}"
+    )
+
+    file_path = (
+        DOCUMENT_UPLOAD_DIR / stored_file_name
+    )
+
+    try:
+        file_path.write_bytes(file_content)
+    except OSError:
+        raise HTTPException(
+            status_code=500,
+            detail="Document file could not be saved",
+        )
+    finally:
+        await file.close()
+
+    new_document = models.TransportDocument(
+        document_type=clean_document_type,
+        document_number=document_number.strip(),
+        vehicle_id=vehicle_id,
+        driver_id=driver_id,
+        issuing_authority=(
+            issuing_authority.strip()
+        ),
+        issue_date=parsed_issue_date,
+        expiry_date=parsed_expiry_date,
+        file_name=file.filename or stored_file_name,
+        stored_file_name=stored_file_name,
+        file_url=(
+            f"/uploads/documents/"
+            f"{stored_file_name}"
+        ),
+        content_type=file.content_type or "",
+        file_size=len(file_content),
+        notes=notes.strip(),
+    )
+
+    try:
+        db.add(new_document)
+        db.commit()
+        db.refresh(new_document)
+    except Exception:
+        db.rollback()
+
+        if file_path.exists():
+            file_path.unlink()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Document record could not be saved",
+        )
+
+    return document_to_response(new_document)
+
+
+# =========================================================
+# UPDATE DOCUMENT DETAILS
+# =========================================================
+
+@app.put(
+    "/api/documents/{document_id}",
+    response_model=schemas.DocumentOut,
+)
+def update_document(
+    document_id: int,
+    payload: schemas.DocumentUpdate,
+    db: Session = Depends(get_db),
+):
+    document = (
+        db.query(models.TransportDocument)
+        .filter(
+            models.TransportDocument.id
+            == document_id
+        )
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    update_data = payload.model_dump(
+        exclude_unset=True
+    )
+
+    new_vehicle_id = update_data.get(
+        "vehicle_id",
+        document.vehicle_id,
+    )
+
+    new_driver_id = update_data.get(
+        "driver_id",
+        document.driver_id,
+    )
+
+    validate_document_assignment(
+        db,
+        new_vehicle_id,
+        new_driver_id,
+    )
+
+    new_issue_date = update_data.get(
+        "issue_date",
+        document.issue_date,
+    )
+
+    new_expiry_date = update_data.get(
+        "expiry_date",
+        document.expiry_date,
+    )
+
+    if (
+        new_issue_date
+        and new_expiry_date
+        and new_expiry_date < new_issue_date
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Expiry date cannot be before "
+                "issue date"
+            ),
+        )
+
+    for field, value in update_data.items():
+        if isinstance(value, str):
+            value = value.strip()
+
+        setattr(document, field, value)
+
+    db.commit()
+    db.refresh(document)
+
+    return document_to_response(document)
+
+
+# =========================================================
+# DOWNLOAD DOCUMENT
+# =========================================================
+
+@app.get(
+    "/api/documents/{document_id}/download"
+)
+def download_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    document = (
+        db.query(models.TransportDocument)
+        .filter(
+            models.TransportDocument.id
+            == document_id
+        )
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    file_path = (
+        DOCUMENT_UPLOAD_DIR
+        / document.stored_file_name
+    )
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Document file not found",
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=(
+            document.content_type
+            or "application/octet-stream"
+        ),
+        filename=(
+            document.file_name
+            or document.stored_file_name
+        ),
+    )
+
+
+# =========================================================
+# DELETE DOCUMENT
+# =========================================================
+
+@app.delete(
+    "/api/documents/{document_id}"
+)
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    document = (
+        db.query(models.TransportDocument)
+        .filter(
+            models.TransportDocument.id
+            == document_id
+        )
+        .first()
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    stored_file_name = (
+        document.stored_file_name or ""
+    )
+
+    db.delete(document)
+    db.commit()
+
+    if stored_file_name:
+        file_path = (
+            DOCUMENT_UPLOAD_DIR
+            / stored_file_name
+        )
+
+        if file_path.exists():
+            try:
+                file_path.unlink()
+            except OSError:
+                pass
+
+    return {
+        "ok": True,
+        "message": "Document deleted successfully",
     }
