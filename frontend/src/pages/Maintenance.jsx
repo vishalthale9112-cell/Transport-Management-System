@@ -24,21 +24,40 @@ export default function Maintenance() {
   };
 
   const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!form.vehicle_id || !form.service_type) return;
-    await createMaintenance({
-      vehicle_id: Number(form.vehicle_id),
-      service_type: form.service_type,
-      brand: form.brand,
-      driver_name: form.driver_name,
-      cost: Number(form.cost) || 0,
-      next_due_days: Number(form.next_due_days) || 30,
-    });
-    setForm({ vehicle_id: "", service_type: "", brand: "", cost: "", next_due_days: "", driver_name: "" });
-    setShowForm(false);
-    load();
-  };
+  e.preventDefault();
 
+  if (
+    !form.vehicle_id ||
+    !form.service_type
+  ) {
+    return;
+  }
+
+  await createMaintenance({
+    vehicle_id: Number(form.vehicle_id),
+    service_type: form.service_type,
+    brand: form.brand || "",
+    driver_name: form.driver_name || "",
+    cost: Number(form.cost) || 0,
+    next_due_days:
+      Number(form.next_due_days) || 30,
+    date: new Date()
+      .toISOString()
+      .split("T")[0],
+  });
+
+  setForm({
+    vehicle_id: "",
+    service_type: "",
+    brand: "",
+    cost: "",
+    next_due_days: "",
+    driver_name: "",
+  });
+
+  setShowForm(false);
+  load();
+};
   const dueSoonCount = records.filter((r) => r.next_due_days <= 5).length;
   const totalCost = records.reduce((sum, r) => sum + r.cost, 0);
 
