@@ -2,31 +2,166 @@ import axios from "axios";
 
 const API_BASE = "http://localhost:8000/api";
 
-export const api = axios.create({ baseURL: API_BASE });
+export const api = axios.create({
+  baseURL: API_BASE,
+});
 
-export const getDashboard = () => api.get("/dashboard").then((r) => r.data);
+// =========================================================
+// DASHBOARD API
+// =========================================================
+
+export const getDashboard = () =>
+  api
+    .get("/dashboard")
+    .then((response) => response.data);
+
+// =========================================================
+// VEHICLES API
+// =========================================================
+
 export const getVehicles = (search = "") =>
-  api.get(`/vehicles${search ? `?search=${search}` : ""}`).then((r) => r.data);
-export const getVehicle = (id) => api.get(`/vehicles/${id}`).then((r) => r.data);
-export const createVehicle = (data) => api.post("/vehicles", data).then((r) => r.data);
-export const deleteVehicle = (id) => api.delete(`/vehicles/${id}`).then((r) => r.data);
-export const getDrivers = () => api.get("/drivers").then((r) => r.data);
-export const createDriver = (data) => api.post("/drivers", data).then((r) => r.data);
-export const deleteDriver = (id) => api.delete(`/drivers/${id}`).then((r) => r.data);
-export const getOrders = () => api.get("/orders").then((r) => r.data);
-export const createOrder = (data) => api.post("/orders", data).then((r) => r.data);
-export const deleteOrder = (id) => api.delete(`/orders/${id}`).then((r) => r.data);
-export const getAlerts = () => api.get("/alerts").then((r) => r.data);
-export const getTrips = () => api.get("/trips").then((r) => r.data);
-export const createTrip = (data) => api.post("/trips", data).then((r) => r.data);
-export const deleteTrip = (id) => api.delete(`/trips/${id}`).then((r) => r.data);
-export const getFuelLogs = (vehicleId = null) =>
-  api.get(`/fuel-logs${vehicleId ? `?vehicle_id=${vehicleId}` : ""}`).then((r) => r.data);
-export const createFuelLog = (data) => api.post("/fuel-logs", data).then((r) => r.data);
-export const getMaintenance = (vehicleId = null) =>
-  api.get(`/maintenance${vehicleId ? `?vehicle_id=${vehicleId}` : ""}`).then((r) => r.data);
-export const createMaintenance = (data) => api.post("/maintenance", data).then((r) => r.data);
-export const deleteMaintenance = (id) => api.delete(`/maintenance/${id}`).then((r) => r.data);
+  api
+    .get(
+      `/vehicles${
+        search ? `?search=${search}` : ""
+      }`
+    )
+    .then((response) => response.data);
+
+export const getVehicle = (vehicleId) =>
+  api
+    .get(`/vehicles/${vehicleId}`)
+    .then((response) => response.data);
+
+export const createVehicle = (vehicleData) =>
+  api
+    .post("/vehicles", vehicleData)
+    .then((response) => response.data);
+
+export const deleteVehicle = (vehicleId) =>
+  api
+    .delete(`/vehicles/${vehicleId}`)
+    .then((response) => response.data);
+
+// =========================================================
+// DRIVERS API
+// =========================================================
+
+export const getDrivers = () =>
+  api
+    .get("/drivers")
+    .then((response) => response.data);
+
+export const createDriver = (driverData) =>
+  api
+    .post("/drivers", driverData)
+    .then((response) => response.data);
+
+export const deleteDriver = (driverId) =>
+  api
+    .delete(`/drivers/${driverId}`)
+    .then((response) => response.data);
+
+// =========================================================
+// ORDERS API
+// =========================================================
+
+export const getOrders = () =>
+  api
+    .get("/orders")
+    .then((response) => response.data);
+
+export const createOrder = (orderData) =>
+  api
+    .post("/orders", orderData)
+    .then((response) => response.data);
+
+export const deleteOrder = (orderId) =>
+  api
+    .delete(`/orders/${orderId}`)
+    .then((response) => response.data);
+
+// =========================================================
+// ALERTS API
+// =========================================================
+
+export const getAlerts = () =>
+  api
+    .get("/alerts")
+    .then((response) => response.data);
+
+// =========================================================
+// TRIPS API
+// =========================================================
+
+export const getTrips = () =>
+  api
+    .get("/trips")
+    .then((response) => response.data);
+
+export const createTrip = (tripData) =>
+  api
+    .post("/trips", tripData)
+    .then((response) => response.data);
+
+export const deleteTrip = (tripId) =>
+  api
+    .delete(`/trips/${tripId}`)
+    .then((response) => response.data);
+
+// =========================================================
+// FUEL LOGS API
+// =========================================================
+
+export const getFuelLogs = (
+  vehicleId = null
+) =>
+  api
+    .get(
+      `/fuel-logs${
+        vehicleId
+          ? `?vehicle_id=${vehicleId}`
+          : ""
+      }`
+    )
+    .then((response) => response.data);
+
+export const createFuelLog = (fuelData) =>
+  api
+    .post("/fuel-logs", fuelData)
+    .then((response) => response.data);
+
+// =========================================================
+// MAINTENANCE API
+// =========================================================
+
+export const getMaintenance = (
+  vehicleId = null
+) =>
+  api
+    .get(
+      `/maintenance${
+        vehicleId
+          ? `?vehicle_id=${vehicleId}`
+          : ""
+      }`
+    )
+    .then((response) => response.data);
+
+export const createMaintenance = (
+  maintenanceData
+) =>
+  api
+    .post("/maintenance", maintenanceData)
+    .then((response) => response.data);
+
+export const deleteMaintenance = (
+  maintenanceId
+) =>
+  api
+    .delete(`/maintenance/${maintenanceId}`)
+    .then((response) => response.data);
+
 // =========================================================
 // REAL GPS TRACKING API
 // =========================================================
@@ -34,7 +169,6 @@ export const deleteMaintenance = (id) => api.delete(`/maintenance/${id}`).then((
 const GPS_API_BASE =
   import.meta.env.VITE_API_URL ||
   "http://127.0.0.1:8000/api";
-
 
 export async function createGpsTracker(
   vehicleId
@@ -58,7 +192,6 @@ export async function createGpsTracker(
   return data;
 }
 
-
 export async function getLatestGpsLocations() {
   const response = await fetch(
     `${GPS_API_BASE}/gps/latest`
@@ -75,7 +208,6 @@ export async function getLatestGpsLocations() {
 
   return data;
 }
-
 
 export async function getLatestVehicleGps(
   vehicleId
@@ -95,7 +227,6 @@ export async function getLatestVehicleGps(
 
   return data;
 }
-
 
 export async function getVehicleGpsHistory(
   vehicleId
@@ -154,7 +285,6 @@ export async function getCustomers(
   return data;
 }
 
-
 export async function createCustomer(
   customerData
 ) {
@@ -180,7 +310,6 @@ export async function createCustomer(
 
   return data;
 }
-
 
 export async function updateCustomer(
   customerId,
@@ -209,7 +338,6 @@ export async function updateCustomer(
   return data;
 }
 
-
 export async function deleteCustomer(
   customerId
 ) {
@@ -231,3 +359,56 @@ export async function deleteCustomer(
 
   return data;
 }
+
+// =========================================================
+// NOTIFICATIONS API
+// =========================================================
+
+export const getNotifications = ({
+  search = "",
+  notificationType = "",
+  priority = "",
+  unreadOnly = false,
+} = {}) =>
+  api
+    .get("/notifications", {
+      params: {
+        search: search || undefined,
+        notification_type:
+          notificationType || undefined,
+        priority: priority || undefined,
+        unread_only: unreadOnly,
+      },
+    })
+    .then((response) => response.data);
+
+export const getNotificationsSummary = () =>
+  api
+    .get("/notifications/summary")
+    .then((response) => response.data);
+
+export const markNotificationRead = (
+  notificationId
+) =>
+  api
+    .patch(
+      `/notifications/${notificationId}/read`
+    )
+    .then((response) => response.data);
+
+export const markAllNotificationsRead = () =>
+  api
+    .patch("/notifications/read-all")
+    .then((response) => response.data);
+
+export const clearReadNotifications = () =>
+  api
+    .delete("/notifications/clear-read")
+    .then((response) => response.data);
+
+export const deleteNotification = (
+  notificationId
+) =>
+  api
+    .delete(`/notifications/${notificationId}`)
+    .then((response) => response.data);

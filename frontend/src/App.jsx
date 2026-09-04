@@ -1,7 +1,7 @@
 import {
   BrowserRouter,
-  Routes,
   Route,
+  Routes,
 } from "react-router-dom";
 
 import Sidebar from "./components/Sidebar";
@@ -13,37 +13,33 @@ import Drivers from "./pages/Drivers";
 import Orders from "./pages/Orders";
 import Trips from "./pages/Trips";
 import LiveTracking from "./pages/LiveTracking";
+import DriverTracking from "./pages/DriverTracking";
 import FuelManagement from "./pages/FuelManagement";
 import Maintenance from "./pages/Maintenance";
 import Customers from "./pages/Customers";
+import Notifications from "./pages/Notifications";
 import Placeholder from "./pages/Placeholder";
-import DriverTracking from "./pages/DriverTracking";
-
 
 const placeholders = [
   ["/income", "Income"],
   ["/expenses", "Expenses"],
   ["/reports", "Reports"],
   ["/documents", "Documents"],
-  ["/notifications", "Notifications"],
   ["/ai-assistant", "AI Assistant"],
   ["/settings", "Settings"],
 ];
-
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* DRIVER PUBLIC GPS PAGE */}
-
+        {/* Driver public GPS page */}
         <Route
           path="/driver-track/:token"
           element={<DriverTracking />}
         />
 
-        {/* ADMIN DASHBOARD */}
-
+        {/* Admin dashboard */}
         <Route
           path="/*"
           element={<AdminLayout />}
@@ -52,7 +48,6 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
 
 function AdminLayout() {
   return (
@@ -108,13 +103,16 @@ function AdminLayout() {
             element={<Customers />}
           />
 
+          <Route
+            path="/notifications"
+            element={<Notifications />}
+          />
+
           {placeholders.map(([path, title]) => (
             <Route
               key={path}
               path={path}
-              element={
-                <Placeholder title={title} />
-              }
+              element={<Placeholder title={title} />}
             />
           ))}
         </Routes>
