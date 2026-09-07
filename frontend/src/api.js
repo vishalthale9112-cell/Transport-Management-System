@@ -533,3 +533,34 @@ export const deleteNotification = (
   api
     .delete(`/notifications/${notificationId}`)
     .then(getData);
+
+// =========================================================
+// AI ASSISTANT API
+// =========================================================
+
+export const askAIAssistant = (
+  message
+) =>
+  api
+    .post("/ai-assistant/query", {
+      message,
+    })
+    .then(getData);
+
+
+export const generateAISpeech = (
+  text,
+  voiceName = "Charon"
+) =>
+  api
+    .post(
+      "/ai-assistant/speech",
+      {
+        text,
+        voice_name: voiceName,
+      },
+      {
+        responseType: "blob",
+      }
+    )
+    .then((response) => response.data);

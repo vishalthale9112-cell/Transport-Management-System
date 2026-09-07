@@ -23,9 +23,9 @@ import Reports from "./pages/Reports";
 import Documents from "./pages/Documents";
 import Notifications from "./pages/Notifications";
 import Placeholder from "./pages/Placeholder";
+import AIAssistant from "./pages/AIAssistant";
 
 const placeholders = [
-  ["/ai-assistant", "AI Assistant"],
   ["/settings", "Settings"],
 ];
 
@@ -124,6 +124,10 @@ function AdminLayout() {
           <Route
             path="/notifications"
             element={<Notifications />}
+          />
+          <Route
+            path="/ai-assistant"
+            element={<AIAssistant />}
           />
 
           {placeholders.map(([path, title]) => (

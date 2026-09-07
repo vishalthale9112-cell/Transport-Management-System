@@ -786,3 +786,42 @@ class NotificationOut(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,
     )
+# =========================================================
+# AI ASSISTANT SCHEMAS
+# =========================================================
+
+class AIAssistantRequest(BaseModel):
+    message: str = Field(
+        ...,
+        min_length=2,
+        max_length=500,
+    )
+
+    language: str = Field(
+        default="auto",
+        min_length=2,
+        max_length=20,
+    )
+
+
+class AIAssistantResponse(BaseModel):
+    answer: str
+    intent: str
+
+    suggestions: list[str] = Field(
+        default_factory=list,
+    )
+
+
+class AIAssistantSpeechRequest(BaseModel):
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=4000,
+    )
+
+    voice_name: str = Field(
+        default="Charon",
+        min_length=2,
+        max_length=30,
+    )
