@@ -44,41 +44,42 @@ export const getVehicles = (
 ) =>
   api
     .get("/vehicles", {
-      params: cleanParams({
-        search,
-      }),
+      params: {
+        search: search || undefined,
+      },
     })
     .then(getData);
-
 
 export const getVehicle = (
   vehicleId
 ) =>
   api
-    .get(
-      `/vehicles/${vehicleId}`
-    )
+    .get(`/vehicles/${vehicleId}`)
     .then(getData);
-
 
 export const createVehicle = (
   vehicleData
 ) =>
   api
-    .post(
-      "/vehicles",
+    .post("/vehicles", vehicleData)
+    .then(getData);
+
+export const updateVehicle = (
+  vehicleId,
+  vehicleData
+) =>
+  api
+    .put(
+      `/vehicles/${vehicleId}`,
       vehicleData
     )
     .then(getData);
-
 
 export const deleteVehicle = (
   vehicleId
 ) =>
   api
-    .delete(
-      `/vehicles/${vehicleId}`
-    )
+    .delete(`/vehicles/${vehicleId}`)
     .then(getData);
 
 

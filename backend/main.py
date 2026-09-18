@@ -955,6 +955,133 @@ def create_vehicle(
     db.commit()
 
     return new_vehicle
+@app.put(
+    "/api/vehicles/{vehicle_id}",
+    response_model=schemas.VehicleOut,
+)
+def update_vehicle(
+    vehicle_id: int,
+    vehicle_data: schemas.VehicleUpdate,
+    db: Session = Depends(get_db),
+):
+    vehicle = (
+        db.query(models.Vehicle)
+        .filter(
+            models.Vehicle.id
+            == vehicle_id
+        )
+        .first()
+    )
+
+    if not vehicle:
+        raise HTTPException(
+            status_code=404,
+            detail="Vehicle not found",
+        )
+
+    update_data = (
+        vehicle_data.model_dump(
+            exclude_unset=True,
+        )
+    )
+
+    # Validate registration number
+    if "registration_number" in update_data:
+        registration_number = str(
+            update_data[
+                "registration_number"
+            ]
+            or ""
+        ).strip().upper()
+
+        if not registration_number:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Registration number "
+                    "is required"
+                ),
+            )
+
+        existing_vehicle = (
+            db.query(models.Vehicle)
+            .filter(
+                models.Vehicle
+                .registration_number
+                == registration_number,
+                models.Vehicle.id
+                != vehicle_id,
+            )
+            .first()
+        )
+
+        if existing_vehicle:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Registration number "
+                    "already exists"
+                ),
+            )
+
+        update_data[
+            "registration_number"
+        ] = registration_number
+
+    # Validate driver assignment
+    if "driver_id" in update_data:
+        driver_id = update_data[
+            "driver_id"
+        ]
+
+        if driver_id is not None:
+            driver = (
+                db.query(models.Driver)
+                .filter(
+                    models.Driver.id
+                    == driver_id
+                )
+                .first()
+            )
+
+            if not driver:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Driver not found",
+                )
+
+            driver_vehicle = (
+                db.query(models.Vehicle)
+                .filter(
+                    models.Vehicle.driver_id
+                    == driver_id,
+                    models.Vehicle.id
+                    != vehicle_id,
+                )
+                .first()
+            )
+
+            if driver_vehicle:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Driver is already assigned "
+                        f"to vehicle "
+                        f"{driver_vehicle.registration_number}"
+                    ),
+                )
+
+    for field, value in update_data.items():
+        setattr(
+            vehicle,
+            field,
+            value,
+        )
+
+    db.commit()
+    db.refresh(vehicle)
+
+    return vehicle
 
 
 @app.delete(
@@ -2047,7 +2174,7 @@ def update_trip(
     return trip
 
 
-@app.delete(    "/api/trips/{trip_id}",
+@app.delete("/api/trips/{trip_id}",
 )
 def delete_trip(
     trip_id: int,
