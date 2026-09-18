@@ -119,7 +119,7 @@ ensure_database_columns()
 # =========================================================
 
 app = FastAPI(
-    title="Thale Transport API",
+    title=" Transport API",
     version="0.1.0"
 )
 
@@ -162,105 +162,654 @@ app.add_middleware(
 @app.get("/")
 def root():
     return {
-        "message": "Thale Transport API running"
+        "message": " Transport API running"
     }
 
 
 # =========================================================
-# DASHBOARD
+# LIVE DASHBOARD
 # =========================================================
 
-@app.get(
-    "/api/dashboard"
-)
+@app.get("/api/dashboard")
 def get_dashboard(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    current_year = date.today().year
 
-    total_vehicles = (
-        db.query(models.Vehicle)
-        .count()
-    )
+    month_names = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    ]
 
-    active_trips = (
-        db.query(models.Vehicle)
-        .filter(
-            models.Vehicle.trip_progress > 0,
-            models.Vehicle.trip_progress < 100
-        )
-        .count()
-    )
+    monthly_finance = [
+        {
+            "month": month_name,
+            "revenue": 0.0,
+            "expenses": 0.0,
+        }
+        for month_name in month_names
+    ]
 
-    total_drivers = (
-        db.query(models.Driver)
-        .count()
-    )
-
-    pending_orders = (
-        db.query(models.Order)
-        .filter(
-            models.Order.status.in_(
-                ["Pending", "New"]
-            )
-        )
-        .count()
-    )
-
-    finance_rows = (
-        db.query(models.MonthlyFinance)
-        .all()
-    )
-
-    fuel_counts = {}
-
-    for vehicle in (
-        db.query(models.Vehicle).all()
-    ):
-        fuel_counts[
-            vehicle.fuel_type
-        ] = (
-            fuel_counts.get(
-                vehicle.fuel_type,
-                0
-            )
-            + 1
-        )
+    # =====================================================
+    # LOAD LIVE DATABASE DATA
+    # =====================================================
 
     vehicles = (
         db.query(models.Vehicle)
+        .order_by(models.Vehicle.id.asc())
+        .all()
+    )
+
+    drivers = (
+        db.query(models.Driver)
+        .all()
+    )
+
+    trips = (
+        db.query(models.Trip)
+        .all()
+    )
+
+    orders = (
+        db.query(models.Order)
+        .all()
+    )
+
+    income_records = (
+        db.query(models.IncomeRecord)
+        .all()
+    )
+
+    expense_records = (
+        db.query(models.ExpenseRecord)
+        .all()
+    )
+
+    fuel_logs = (
+        db.query(models.FuelLog)
+        .all()
+    )
+
+    maintenance_records = (
+        db.query(models.MaintenanceRecord)
+        .all()
+    )
+
+    # =====================================================
+    # KPI CARDS
+    # =====================================================
+
+    total_vehicles = len(vehicles)
+    total_drivers = len(drivers)
+
+    active_trip_statuses = {
+        "ongoing",
+        "active",
+        "in progress",
+        "in-progress",
+        "started",
+    }
+
+    active_trips = 0
+
+    for trip in trips:
+        trip_status = (
+            trip.status or ""
+        ).strip().lower()
+
+        trip_progress = int(
+            trip.progress or 0
+        )
+
+        if (
+            trip_status in active_trip_statuses
+            or 0 < trip_progress < 100
+        ):
+            active_trips += 1
+
+    pending_order_statuses = {
+        "pending",
+        "new",
+        "processing",
+        "confirmed",
+    }
+
+    pending_orders = 0
+
+    for order in orders:
+        order_status = (
+            order.status or ""
+        ).strip().lower()
+
+        if order_status in pending_order_statuses:
+            pending_orders += 1
+
+    # =====================================================
+    # MONTHLY REVENUE
+    # =====================================================
+
+    ignored_income_statuses = {
+        "pending",
+        "failed",
+        "cancelled",
+        "canceled",
+        "rejected",
+    }
+
+    for income in income_records:
+        payment_date = income.payment_date
+
+        if not payment_date:
+            continue
+
+        if payment_date.year != current_year:
+            continue
+
+        payment_status = (
+            income.payment_status or ""
+        ).strip().lower()
+
+        if payment_status in ignored_income_statuses:
+            continue
+
+        month_index = payment_date.month - 1
+
+        monthly_finance[
+            month_index
+        ]["revenue"] += float(
+            income.amount or 0
+        )
+
+    # =====================================================
+    # MANUAL EXPENSES
+    # =====================================================
+
+    ignored_expense_statuses = {
+        "cancelled",
+        "canceled",
+        "rejected",
+        "failed",
+    }
+
+    for expense in expense_records:
+        expense_date = expense.expense_date
+
+        if not expense_date:
+            continue
+
+        if expense_date.year != current_year:
+            continue
+
+        expense_status = (
+            expense.status or ""
+        ).strip().lower()
+
+        if expense_status in ignored_expense_statuses:
+            continue
+
+        month_index = expense_date.month - 1
+
+        monthly_finance[
+            month_index
+        ]["expenses"] += float(
+            expense.amount or 0
+        )
+
+    # =====================================================
+    # FUEL EXPENSES
+    # =====================================================
+
+    for fuel_log in fuel_logs:
+        fuel_date = fuel_log.date
+
+        if not fuel_date:
+            continue
+
+        if fuel_date.year != current_year:
+            continue
+
+        month_index = fuel_date.month - 1
+
+        monthly_finance[
+            month_index
+        ]["expenses"] += float(
+            fuel_log.total_cost or 0
+        )
+
+    # =====================================================
+    # MAINTENANCE EXPENSES
+    # =====================================================
+
+    for maintenance in maintenance_records:
+        maintenance_date = maintenance.date
+
+        if not maintenance_date:
+            continue
+
+        if maintenance_date.year != current_year:
+            continue
+
+        month_index = (
+            maintenance_date.month - 1
+        )
+
+        monthly_finance[
+            month_index
+        ]["expenses"] += float(
+            maintenance.cost or 0
+        )
+
+    # Round chart amounts
+
+    for monthly_row in monthly_finance:
+        monthly_row["revenue"] = round(
+            monthly_row["revenue"],
+            2,
+        )
+
+        monthly_row["expenses"] = round(
+            monthly_row["expenses"],
+            2,
+        )
+
+    # =====================================================
+    # FUEL TYPE BREAKDOWN
+    # Actual fuel litres from Fuel Logs
+    # =====================================================
+
+    fuel_breakdown = {}
+
+    fuel_name_mapping = {
+        "DIESEL": "Diesel",
+        "PETROL": "Petrol",
+        "CNG": "CNG",
+        "ELECTRIC": "Electric",
+    }
+
+    for fuel_log in fuel_logs:
+        raw_fuel_type = (
+            fuel_log.fuel_type or "Other"
+        ).strip()
+
+        fuel_type = fuel_name_mapping.get(
+            raw_fuel_type.upper(),
+            raw_fuel_type.title(),
+        )
+
+        fuel_breakdown[fuel_type] = (
+            fuel_breakdown.get(
+                fuel_type,
+                0.0,
+            )
+            + float(fuel_log.liters or 0)
+        )
+
+    fuel_breakdown = {
+        fuel_type: round(
+            total_liters,
+            2,
+        )
+        for fuel_type, total_liters
+        in fuel_breakdown.items()
+    }
+
+    # =====================================================
+    # VEHICLE COST DATA
+    # =====================================================
+
+    fuel_cost_by_vehicle = {}
+    odometers_by_vehicle = {}
+
+    for fuel_log in fuel_logs:
+        vehicle_id = fuel_log.vehicle_id
+
+        fuel_cost_by_vehicle[vehicle_id] = (
+            fuel_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+            + float(fuel_log.total_cost or 0)
+        )
+
+        odometer = float(
+            fuel_log.odometer or 0
+        )
+
+        if odometer > 0:
+            odometers_by_vehicle.setdefault(
+                vehicle_id,
+                [],
+            ).append(odometer)
+
+    maintenance_cost_by_vehicle = {}
+
+    for maintenance in maintenance_records:
+        vehicle_id = maintenance.vehicle_id
+
+        maintenance_cost_by_vehicle[
+            vehicle_id
+        ] = (
+            maintenance_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+            + float(maintenance.cost or 0)
+        )
+
+    expense_cost_by_vehicle = {}
+
+    for expense in expense_records:
+        if expense.vehicle_id is None:
+            continue
+
+        expense_status = (
+            expense.status or ""
+        ).strip().lower()
+
+        if expense_status in ignored_expense_statuses:
+            continue
+
+        vehicle_id = expense.vehicle_id
+
+        expense_cost_by_vehicle[
+            vehicle_id
+        ] = (
+            expense_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+            + float(expense.amount or 0)
+        )
+
+    # =====================================================
+    # GPS LOCATIONS
+    # =====================================================
+
+    gps_locations = (
+        db.query(models.VehicleLocation)
+        .order_by(
+            models.VehicleLocation.vehicle_id.asc(),
+            models.VehicleLocation.recorded_at.asc(),
+        )
+        .all()
+    )
+
+    locations_by_vehicle = {}
+
+    for location in gps_locations:
+        locations_by_vehicle.setdefault(
+            location.vehicle_id,
+            [],
+        ).append(location)
+
+    # =====================================================
+    # CALCULATE GPS DISTANCE
+    # =====================================================
+
+    def calculate_gps_distance(
+        locations,
+    ):
+        if len(locations) < 2:
+            return 0.0
+
+        earth_radius_km = 6371.0
+        total_distance = 0.0
+
+        for index in range(
+            1,
+            len(locations),
+        ):
+            previous_location = (
+                locations[index - 1]
+            )
+
+            current_location = (
+                locations[index]
+            )
+
+            latitude_1 = radians(
+                float(
+                    previous_location.latitude
+                )
+            )
+
+            longitude_1 = radians(
+                float(
+                    previous_location.longitude
+                )
+            )
+
+            latitude_2 = radians(
+                float(
+                    current_location.latitude
+                )
+            )
+
+            longitude_2 = radians(
+                float(
+                    current_location.longitude
+                )
+            )
+
+            latitude_difference = (
+                latitude_2 - latitude_1
+            )
+
+            longitude_difference = (
+                longitude_2 - longitude_1
+            )
+
+            haversine_value = (
+                sin(
+                    latitude_difference / 2
+                ) ** 2
+                + cos(latitude_1)
+                * cos(latitude_2)
+                * sin(
+                    longitude_difference / 2
+                ) ** 2
+            )
+
+            haversine_value = min(
+                1.0,
+                max(
+                    0.0,
+                    haversine_value,
+                ),
+            )
+
+            angular_distance = 2 * atan2(
+                sqrt(haversine_value),
+                sqrt(
+                    1 - haversine_value
+                ),
+            )
+
+            segment_distance = (
+                earth_radius_km
+                * angular_distance
+            )
+
+            total_distance += segment_distance
+
+        return total_distance
+
+    # =====================================================
+    # REAL COST PER KM
+    # Total operating cost / travelled distance
+    # =====================================================
+
+    cost_per_km = {}
+
+    for vehicle in vehicles[:6]:
+        vehicle_id = vehicle.id
+
+        total_fuel_cost = (
+            fuel_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+        )
+
+        total_maintenance_cost = (
+            maintenance_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+        )
+
+        total_other_expenses = (
+            expense_cost_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+        )
+
+        total_vehicle_cost = (
+            total_fuel_cost
+            + total_maintenance_cost
+            + total_other_expenses
+        )
+
+        odometer_values = sorted(
+            set(
+                odometers_by_vehicle.get(
+                    vehicle_id,
+                    [],
+                )
+            )
+        )
+
+        travelled_distance = 0.0
+
+        # First preference: odometer distance
+
+        if len(odometer_values) >= 2:
+            travelled_distance = (
+                odometer_values[-1]
+                - odometer_values[0]
+            )
+
+        # Second preference: GPS distance
+
+        if travelled_distance <= 0:
+            vehicle_locations = (
+                locations_by_vehicle.get(
+                    vehicle_id,
+                    [],
+                )
+            )
+
+            travelled_distance = (
+                calculate_gps_distance(
+                    vehicle_locations
+                )
+            )
+
+        if travelled_distance > 0:
+            vehicle_cost_per_km = (
+                total_vehicle_cost
+                / travelled_distance
+            )
+        else:
+            vehicle_cost_per_km = 0.0
+
+        cost_per_km[
+            vehicle.registration_number
+        ] = round(
+            vehicle_cost_per_km,
+            2,
+        )
+
+    # =====================================================
+    # LIVE NOTIFICATIONS
+    # =====================================================
+
+    notifications = (
+        db.query(models.Notification)
+        .order_by(
+            models.Notification.created_at.desc()
+        )
         .limit(6)
         .all()
     )
 
-    cost_per_km = {
-        vehicle.registration_number:
-            round(
-                8 + (vehicle.id * 1.3),
-                1
-            )
-        for vehicle in vehicles
-    }
+    alerts = []
 
-    alerts = (
-        db.query(models.Alert)
-        .order_by(
-            models.Alert.id.desc()
+    for notification in notifications:
+        priority = (
+            notification.priority or "Medium"
+        ).strip().lower()
+
+        if priority in {
+            "critical",
+            "high",
+            "urgent",
+        }:
+            severity = "critical"
+
+        elif priority == "medium":
+            severity = "warning"
+
+        else:
+            severity = "info"
+
+        minutes_ago = 0
+
+        if notification.created_at:
+            time_difference = (
+                datetime.utcnow()
+                - notification.created_at
+            )
+
+            minutes_ago = max(
+                0,
+                int(
+                    time_difference.total_seconds()
+                    // 60
+                ),
+            )
+
+        alerts.append(
+            {
+                "id": notification.id,
+                "title": notification.title,
+                "message": notification.message,
+                "notification_type":
+                    notification.notification_type,
+                "severity": severity,
+                "priority": notification.priority,
+                "is_read": notification.is_read,
+                "minutes_ago": minutes_ago,
+                "action_url": "/notifications",
+            }
         )
-        .all()
-    )
+
+    # =====================================================
+    # RESPONSE
+    # =====================================================
 
     return {
+        "year": current_year,
         "total_vehicles": total_vehicles,
         "active_trips": active_trips,
         "total_drivers": total_drivers,
         "pending_orders": pending_orders,
-        "monthly_finance": finance_rows,
-        "fuel_breakdown": fuel_counts,
+        "monthly_finance": monthly_finance,
+        "fuel_breakdown": fuel_breakdown,
         "cost_per_km": cost_per_km,
         "alerts": alerts,
     }
-
-
 # =========================================================
 # VEHICLES
 # =========================================================
@@ -2757,7 +3306,6 @@ def get_reports_dashboard(
         if str(record.status or "").lower()
         == "pending"
     )
-
     # -----------------------------------------------------
     # ALL EXPENSE CATEGORY TOTALS
     # -----------------------------------------------------
@@ -4520,7 +5068,7 @@ def build_safe_ai_context(
 
 AI_SYSTEM_INSTRUCTION = """
 You are the official AI Assistant for
-THALE TRANSPORT Management System.
+ TRANSPORT Management System.
 
 LANGUAGE RULES:
 1. Detect the language used in the user's
@@ -4651,10 +5199,9 @@ same language as requested by the user.
                 "unavailable."
             ),
         )
-    # =========================================================
+# =========================================================
 # GEMINI MULTILINGUAL TEXT TO SPEECH
 # =========================================================
-
 GEMINI_TTS_MODEL = os.getenv(
     "GEMINI_TTS_MODEL",
     "gemini-2.5-flash-preview-tts",

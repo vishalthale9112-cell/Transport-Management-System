@@ -29,7 +29,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <span className="mark">TT</span>
-        <span>THALE TRANSPORT</span>
+        <span>TRANSPORT</span>
       </div>
       {links.map(({ to, label, icon: Icon }) => (
         <NavLink

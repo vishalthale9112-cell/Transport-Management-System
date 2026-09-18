@@ -193,7 +193,7 @@ function Notifications() {
       <div className="notifications-header">
         <div>
           <p className="page-label">
-            THALE TRANSPORT
+             TRANSPORT
           </p>
 
           <h1>Notifications</h1>

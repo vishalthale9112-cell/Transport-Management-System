@@ -599,7 +599,7 @@ export default function LiveTracking() {
     if (!selected) return;
 
     const report = `
-THALE TRANSPORT
+ TRANSPORT
 LIVE TRACKING REPORT
 
 Vehicle: ${selected.registration_number}

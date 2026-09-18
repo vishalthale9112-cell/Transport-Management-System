@@ -22,7 +22,7 @@ const initialMessage = {
   id: "welcome-message",
   role: "assistant",
   content:
-    "Hello! I am your THALE TRANSPORT AI Assistant. Ask me about vehicles, drivers, trips, maintenance or document alerts.",
+    "Hello! I am your TRANSPORT AI Assistant. Ask me about vehicles, drivers, trips, maintenance or document alerts.",
   time: new Date(),
 };
 
@@ -210,7 +210,7 @@ function AIAssistant() {
         <div>
           <div className="ai-page-label">
             <Sparkles size={15} />
-            THALE TRANSPORT
+              TRANSPORT
           </div>
 
           <h1>AI Assistant</h1>

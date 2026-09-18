@@ -83,7 +83,7 @@ export default function Reports() {
 
     const rows = [
       [
-        "THALE TRANSPORT - FINANCIAL REPORT",
+        " TRANSPORT - FINANCIAL REPORT",
       ],
       ["Period", report.period],
       [],
@@ -153,7 +153,7 @@ export default function Reports() {
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = `thale-transport-report-${
+    link.download = `transport-report-${
       month || "all-time"
     }.csv`;
 

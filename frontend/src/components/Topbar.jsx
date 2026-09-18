@@ -722,7 +722,7 @@ Do not only confirm the language.
             <div className="voice-ai-header">
               <div>
                 <span className="voice-ai-label">
-                  THALE TRANSPORT
+                   TRANSPORT
                 </span>
 
                 <h2>

@@ -229,7 +229,7 @@ export default function DriverTracking() {
             marginBottom: 5,
           }}
         >
-          THALE TRANSPORT
+           TRANSPORT
         </h1>
 
         <div
