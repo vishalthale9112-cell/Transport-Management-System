@@ -169,17 +169,29 @@ class TripCreate(BaseModel):
     vehicle_id: int
     origin: str
     destination: str
+
+    distance_km: float = Field(
+        default=0,
+        ge=0,
+    )
+
     progress: int = Field(
         default=0,
         ge=0,
         le=100,
     )
+
     status: str = "Ongoing"
 
 
 class TripUpdate(BaseModel):
     origin: Optional[str] = None
     destination: Optional[str] = None
+
+    distance_km: Optional[float] = Field(
+        default=None,
+        ge=0,
+    )
 
     progress: Optional[int] = Field(
         default=None,
@@ -195,14 +207,13 @@ class TripOut(BaseModel):
     vehicle_id: int
     origin: Optional[str] = ""
     destination: Optional[str] = ""
+    distance_km: float = 0
     progress: int
     status: str
 
     model_config = ConfigDict(
         from_attributes=True,
     )
-
-
 # =========================================================
 # MONTHLY FINANCE SCHEMAS
 # =========================================================
@@ -824,4 +835,71 @@ class AIAssistantSpeechRequest(BaseModel):
         default="Charon",
         min_length=2,
         max_length=30,
+    )
+# =========================================================
+# APPLICATION SETTINGS SCHEMAS
+# =========================================================
+
+class AppSettingsUpdate(BaseModel):
+    company_name: str = Field(
+        default="TRANSPORT",
+        min_length=2,
+        max_length=100,
+    )
+
+    owner_name: str = Field(
+        default="",
+        max_length=100,
+    )
+
+    phone: str = Field(
+        default="",
+        max_length=20,
+    )
+
+    email: str = Field(
+        default="",
+        max_length=150,
+    )
+
+    address: str = Field(
+        default="",
+        max_length=500,
+    )
+
+    currency: str = Field(
+        default="INR",
+        pattern="^(INR|USD|EUR)$",
+    )
+
+    language: str = Field(
+        default="en",
+        pattern="^(en|mr|hi)$",
+    )
+
+    ai_voice: str = Field(
+        default="Charon",
+        min_length=2,
+        max_length=50,
+    )
+
+    email_notifications: bool = True
+    push_notifications: bool = True
+    maintenance_alerts: bool = True
+    document_alerts: bool = True
+
+    theme: str = Field(
+        default="light",
+        pattern="^(light|dark)$",
+    )
+
+
+class AppSettingsOut(
+    AppSettingsUpdate
+):
+    id: int
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True,
     )

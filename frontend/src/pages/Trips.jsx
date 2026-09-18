@@ -1,28 +1,44 @@
 import { useEffect, useState } from "react";
 import {
-  Plus,
+  Gauge,
   MapPin,
+  Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 
 import {
-  getTrips,
   createTrip,
-  getVehicles,
   deleteTrip,
+  getTrips,
+  getVehicles,
+  updateTrip,
 } from "../api";
 
 import RealMap from "../components/RealMap";
 
+const EMPTY_FORM = {
+  vehicle_id: "",
+  origin: "",
+  destination: "",
+  distance_km: "",
+  progress: 0,
+  status: "Ongoing",
+};
+
 export default function Trips() {
   const [trips, setTrips] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
+  const [vehicles, setVehicles] =
+    useState([]);
 
   const [selectedTrip, setSelectedTrip] =
     useState(null);
 
   const [showForm, setShowForm] =
     useState(false);
+
+  const [editingTripId, setEditingTripId] =
+    useState(null);
 
   const [saving, setSaving] =
     useState(false);
@@ -33,15 +49,12 @@ export default function Trips() {
   const [formError, setFormError] =
     useState("");
 
-  const [form, setForm] = useState({
-    vehicle_id: "",
-    origin: "",
-    destination: "",
-  });
+  const [form, setForm] =
+    useState(EMPTY_FORM);
 
-  // ==========================================
+  // =====================================================
   // LOAD TRIPS
-  // ==========================================
+  // =====================================================
 
   const loadTrips = async (
     preferredTripId = null
@@ -53,53 +66,59 @@ export default function Trips() {
         ? data
         : [];
 
-      console.log("Trips loaded:", list);
-
       setTrips(list);
 
-      if (list.length === 0) {
-        setSelectedTrip(null);
-        return;
-      }
+      setSelectedTrip(
+        (currentSelectedTrip) => {
+          if (list.length === 0) {
+            return null;
+          }
 
-      if (preferredTripId) {
-        const found = list.find(
-          (trip) =>
-            Number(trip.id) ===
-            Number(preferredTripId)
-        );
+          if (preferredTripId) {
+            const preferredTrip =
+              list.find(
+                (trip) =>
+                  Number(trip.id) ===
+                  Number(preferredTripId)
+              );
 
-        if (found) {
-          setSelectedTrip(found);
-          return;
+            if (preferredTrip) {
+              return preferredTrip;
+            }
+          }
+
+          if (currentSelectedTrip) {
+            const existingTrip =
+              list.find(
+                (trip) =>
+                  Number(trip.id) ===
+                  Number(
+                    currentSelectedTrip.id
+                  )
+              );
+
+            if (existingTrip) {
+              return existingTrip;
+            }
+          }
+
+          return list[0];
         }
-      }
-
-      if (selectedTrip) {
-        const existing = list.find(
-          (trip) =>
-            Number(trip.id) ===
-            Number(selectedTrip.id)
-        );
-
-        if (existing) {
-          setSelectedTrip(existing);
-          return;
-        }
-      }
-
-      setSelectedTrip(list[0]);
+      );
     } catch (error) {
       console.error(
         "Trips load error:",
         error
       );
+
+      setTrips([]);
+      setSelectedTrip(null);
     }
   };
 
-  // ==========================================
+  // =====================================================
   // INITIAL LOAD
-  // ==========================================
+  // =====================================================
 
   useEffect(() => {
     loadTrips();
@@ -122,95 +141,198 @@ export default function Trips() {
       });
   }, []);
 
-  // ==========================================
-  // CREATE TRIP
-  // ==========================================
+  // =====================================================
+  // RESET FORM
+  // =====================================================
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
+  const resetForm = () => {
+    setForm({
+      ...EMPTY_FORM,
+    });
 
     setFormError("");
+    setEditingTripId(null);
+    setShowForm(false);
+  };
 
+  // =====================================================
+  // OPEN CREATE FORM
+  // =====================================================
+
+  const openCreateForm = () => {
+    setForm({
+      ...EMPTY_FORM,
+    });
+
+    setFormError("");
+    setEditingTripId(null);
+    setShowForm(true);
+  };
+
+  // =====================================================
+  // OPEN EDIT FORM
+  // =====================================================
+
+  const openEditForm = (trip) => {
+    setForm({
+      vehicle_id: String(
+        trip.vehicle_id || ""
+      ),
+
+      origin:
+        trip.origin || "",
+
+      destination:
+        trip.destination || "",
+
+      distance_km:
+        trip.distance_km > 0
+          ? String(trip.distance_km)
+          : "",
+
+      progress:
+        Number(trip.progress || 0),
+
+      status:
+        trip.status || "Ongoing",
+    });
+
+    setEditingTripId(trip.id);
+    setSelectedTrip(trip);
+    setFormError("");
+    setShowForm(true);
+  };
+
+  // =====================================================
+  // VALIDATE FORM
+  // =====================================================
+
+  const validateForm = () => {
     if (!form.vehicle_id) {
-      setFormError(
-        "Please select vehicle."
-      );
-      return;
+      return "Please select vehicle.";
     }
 
     if (!form.origin.trim()) {
-      setFormError(
-        "Please enter origin."
-      );
-      return;
+      return "Please enter origin.";
     }
 
     if (!form.destination.trim()) {
-      setFormError(
-        "Please enter destination."
-      );
-      return;
+      return "Please enter destination.";
     }
 
     if (
-      form.origin.trim().toLowerCase() ===
+      form.origin.trim().toLowerCase()
+      ===
       form.destination.trim().toLowerCase()
     ) {
-      setFormError(
-        "Origin and destination cannot be same."
+      return (
+        "Origin and destination " +
+        "cannot be same."
       );
+    }
+
+    const distanceKm = Number(
+      form.distance_km
+    );
+
+    if (
+      !Number.isFinite(distanceKm)
+      || distanceKm <= 0
+    ) {
+      return (
+        "Please enter valid trip " +
+        "distance in KM."
+      );
+    }
+
+    return "";
+  };
+
+  // =====================================================
+  // CREATE OR UPDATE TRIP
+  // =====================================================
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+
+    setFormError("");
+
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
+
+    const distanceKm = Number(
+      form.distance_km
+    );
 
     try {
       setSaving(true);
 
-      const payload = {
-        vehicle_id: Number(
-          form.vehicle_id
-        ),
-        origin: form.origin.trim(),
-        destination:
-          form.destination.trim(),
-        progress: 0,
-        status: "Ongoing",
-      };
+      let savedTrip;
 
-      console.log(
-        "Creating trip:",
-        payload
-      );
+      if (editingTripId) {
+        savedTrip = await updateTrip(
+          editingTripId,
+          {
+            origin:
+              form.origin.trim(),
 
-      const createdTrip =
-        await createTrip(payload);
+            destination:
+              form.destination.trim(),
 
-      console.log(
-        "Created trip:",
-        createdTrip
-      );
+            distance_km:
+              distanceKm,
 
-      setForm({
-        vehicle_id: "",
-        origin: "",
-        destination: "",
-      });
+            progress:
+              Number(
+                form.progress || 0
+              ),
 
-      setShowForm(false);
+            status:
+              form.status || "Ongoing",
+          }
+        );
+      } else {
+        savedTrip = await createTrip({
+          vehicle_id: Number(
+            form.vehicle_id
+          ),
+
+          origin:
+            form.origin.trim(),
+
+          destination:
+            form.destination.trim(),
+
+          distance_km:
+            distanceKm,
+
+          progress: 0,
+          status: "Ongoing",
+        });
+      }
+
+      resetForm();
 
       await loadTrips(
-        createdTrip?.id || null
+        savedTrip?.id || null
       );
     } catch (error) {
       console.error(
-        "Create trip error:",
+        "Trip save error:",
         error
       );
 
+      const detail =
+        error?.response?.data?.detail;
+
       setFormError(
-        error?.response?.data?.detail
-          ? String(
-              error.response.data.detail
-            )
+        detail
+          ? String(detail)
           : "Trip save झाला नाही."
       );
     } finally {
@@ -218,16 +340,18 @@ export default function Trips() {
     }
   };
 
-  // ==========================================
+  // =====================================================
   // DELETE TRIP
-  // ==========================================
+  // =====================================================
 
   const handleDeleteTrip = async (
     trip
   ) => {
     const confirmDelete =
       window.confirm(
-        `${trip.origin} → ${trip.destination} हा trip delete करायचा आहे का?`
+        `${trip.origin} → ` +
+        `${trip.destination} ` +
+        "हा trip delete करायचा आहे का?"
       );
 
     if (!confirmDelete) {
@@ -239,11 +363,6 @@ export default function Trips() {
 
       await deleteTrip(trip.id);
 
-      console.log(
-        "Trip deleted:",
-        trip.id
-      );
-
       const updatedTrips =
         trips.filter(
           (item) =>
@@ -254,14 +373,21 @@ export default function Trips() {
       setTrips(updatedTrips);
 
       if (
-        Number(selectedTrip?.id) ===
-        Number(trip.id)
+        Number(selectedTrip?.id)
+        === Number(trip.id)
       ) {
         setSelectedTrip(
           updatedTrips.length > 0
             ? updatedTrips[0]
             : null
         );
+      }
+
+      if (
+        Number(editingTripId)
+        === Number(trip.id)
+      ) {
+        resetForm();
       }
     } catch (error) {
       console.error(
@@ -277,9 +403,9 @@ export default function Trips() {
     }
   };
 
-  // ==========================================
+  // =====================================================
   // VEHICLE NAME
-  // ==========================================
+  // =====================================================
 
   const vehicleName = (
     vehicleId
@@ -296,14 +422,14 @@ export default function Trips() {
     }
 
     return (
-      vehicle.registration_number ||
-      `Vehicle #${vehicleId}`
+      vehicle.registration_number
+      || `Vehicle #${vehicleId}`
     );
   };
 
-  // ==========================================
-  // ROUTE
-  // ==========================================
+  // =====================================================
+  // ROUTE FOR MAP
+  // =====================================================
 
   const routeFor = (trip) => {
     if (!trip) {
@@ -313,20 +439,36 @@ export default function Trips() {
     return {
       originName:
         trip.origin || "",
+
       destinationName:
         trip.destination || "",
     };
   };
 
-  // ==========================================
+  // =====================================================
+  // INPUT STYLE
+  // =====================================================
+
+  const inputStyle = {
+    width: "100%",
+    padding: 10,
+    borderRadius: 8,
+    border:
+      "1px solid var(--border)",
+    fontSize: 13,
+    background: "#ffffff",
+    boxSizing: "border-box",
+  };
+
+  // =====================================================
   // UI
-  // ==========================================
+  // =====================================================
 
   return (
     <div className="content">
       <div className="grid-2">
 
-        {/* MAP */}
+        {/* ROUTE MAP */}
 
         <div
           className="card"
@@ -342,9 +484,44 @@ export default function Trips() {
                 "16px 20px 0",
             }}
           >
-            {selectedTrip
-              ? `${selectedTrip.origin} → ${selectedTrip.destination}`
-              : "Route Map"}
+            <span>
+              {selectedTrip
+                ? (
+                    `${selectedTrip.origin} → ` +
+                    selectedTrip.destination
+                  )
+                : "Route Map"}
+            </span>
+
+            {selectedTrip && (
+              <span
+                style={{
+                  display:
+                    "inline-flex",
+                  alignItems:
+                    "center",
+                  gap: 5,
+                  color:
+                    "#0f766e",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                <Gauge size={15} />
+
+                {Number(
+                  selectedTrip.distance_km
+                  || 0
+                ).toLocaleString(
+                  "en-IN",
+                  {
+                    maximumFractionDigits:
+                      2,
+                  }
+                )}{" "}
+                KM
+              </span>
+            )}
           </div>
 
           <div
@@ -356,9 +533,15 @@ export default function Trips() {
             <RealMap
               key={
                 selectedTrip
-                  ? `trip-${selectedTrip.id}-${selectedTrip.origin}-${selectedTrip.destination}`
+                  ? (
+                      `trip-` +
+                      `${selectedTrip.id}-` +
+                      `${selectedTrip.origin}-` +
+                      selectedTrip.destination
+                    )
                   : "no-trip"
               }
+
               route={
                 selectedTrip
                   ? routeFor(
@@ -366,12 +549,13 @@ export default function Trips() {
                     )
                   : null
               }
+
               height={380}
             />
           </div>
         </div>
 
-        {/* TRIPS */}
+        {/* TRIP LIST */}
 
         <div className="card">
           <div className="card-title">
@@ -380,25 +564,20 @@ export default function Trips() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => {
-                setShowForm(
-                  (current) =>
-                    !current
-                );
-
-                setFormError("");
-              }}
+              onClick={
+                openCreateForm
+              }
             >
               <Plus size={14} />
               New Trip
             </button>
           </div>
 
-          {/* NEW TRIP FORM */}
+          {/* CREATE / EDIT FORM */}
 
           {showForm && (
             <form
-              onSubmit={handleAdd}
+              onSubmit={handleSave}
               style={{
                 display: "flex",
                 flexDirection:
@@ -413,25 +592,49 @@ export default function Trips() {
                   "#fafbfc",
               }}
             >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: "#0b1e33",
+                }}
+              >
+                {editingTripId
+                  ? "Update Trip"
+                  : "Create New Trip"}
+              </div>
+
               <select
                 value={
                   form.vehicle_id
                 }
-                onChange={(e) =>
+
+                disabled={
+                  Boolean(
+                    editingTripId
+                  )
+                }
+
+                onChange={(event) =>
                   setForm({
                     ...form,
                     vehicle_id:
-                      e.target.value,
+                      event.target.value,
                   })
                 }
+
                 style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  border:
-                    "1px solid var(--border)",
-                  fontSize: 13,
-                  background:
-                    "#ffffff",
+                  ...inputStyle,
+
+                  cursor:
+                    editingTripId
+                      ? "not-allowed"
+                      : "pointer",
+
+                  opacity:
+                    editingTripId
+                      ? 0.7
+                      : 1,
                 }}
               >
                 <option value="">
@@ -454,51 +657,123 @@ export default function Trips() {
 
               <input
                 type="text"
-                placeholder="Origin - e.g. Jalna"
+                placeholder={
+                  "Origin - e.g. Jalna"
+                }
                 value={form.origin}
-                onChange={(e) =>
+
+                onChange={(event) =>
                   setForm({
                     ...form,
                     origin:
-                      e.target.value,
+                      event.target.value,
                   })
                 }
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  border:
-                    "1px solid var(--border)",
-                  fontSize: 13,
-                }}
+
+                style={inputStyle}
               />
 
               <input
                 type="text"
-                placeholder="Destination - e.g. Akole"
+                placeholder={
+                  "Destination - e.g. Akole"
+                }
                 value={
                   form.destination
                 }
-                onChange={(e) =>
+
+                onChange={(event) =>
                   setForm({
                     ...form,
                     destination:
-                      e.target.value,
+                      event.target.value,
                   })
                 }
-                style={{
-                  padding: 10,
-                  borderRadius: 8,
-                  border:
-                    "1px solid var(--border)",
-                  fontSize: 13,
-                }}
+
+                style={inputStyle}
               />
+
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                placeholder={
+                  "Trip Distance in KM"
+                }
+                value={
+                  form.distance_km
+                }
+
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    distance_km:
+                      event.target.value,
+                  })
+                }
+
+                style={inputStyle}
+              />
+
+              {editingTripId && (
+                <>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    placeholder={
+                      "Trip Progress %"
+                    }
+                    value={
+                      form.progress
+                    }
+
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        progress:
+                          event.target.value,
+                      })
+                    }
+
+                    style={inputStyle}
+                  />
+
+                  <select
+                    value={
+                      form.status
+                    }
+
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        status:
+                          event.target.value,
+                      })
+                    }
+
+                    style={inputStyle}
+                  >
+                    <option value="Ongoing">
+                      Ongoing
+                    </option>
+
+                    <option value="Completed">
+                      Completed
+                    </option>
+
+                    <option value="Cancelled">
+                      Cancelled
+                    </option>
+                  </select>
+                </>
+              )}
 
               {formError && (
                 <div
                   style={{
-                    color:
-                      "#dc2626",
+                    color: "#dc2626",
                     fontSize: 12,
                     fontWeight: 600,
                   }}
@@ -520,19 +795,14 @@ export default function Trips() {
                 >
                   {saving
                     ? "Saving..."
-                    : "Save Trip"}
+                    : editingTripId
+                      ? "Update Trip"
+                      : "Save Trip"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowForm(
-                      false
-                    );
-                    setFormError(
-                      ""
-                    );
-                  }}
+                  onClick={resetForm}
                   style={{
                     padding:
                       "8px 14px",
@@ -541,8 +811,7 @@ export default function Trips() {
                       "1px solid var(--border)",
                     background:
                       "#ffffff",
-                    cursor:
-                      "pointer",
+                    cursor: "pointer",
                   }}
                 >
                   Cancel
@@ -551,7 +820,7 @@ export default function Trips() {
             </form>
           )}
 
-          {/* TRIP LIST */}
+          {/* TRIPS */}
 
           <div
             style={{
@@ -565,22 +834,19 @@ export default function Trips() {
               const isSelected =
                 Number(
                   selectedTrip?.id
-                ) ===
-                Number(trip.id);
+                )
+                === Number(trip.id);
 
               return (
                 <div
                   key={trip.id}
-                  onClick={() => {
-                    console.log(
-                      "Trip selected:",
-                      trip
-                    );
 
+                  onClick={() => {
                     setSelectedTrip({
                       ...trip,
                     });
                   }}
+
                   style={{
                     width: "100%",
                     display: "flex",
@@ -591,13 +857,20 @@ export default function Trips() {
                     padding:
                       "12px 14px",
                     borderRadius: 10,
-                    cursor:
-                      "pointer",
+                    cursor: "pointer",
+                    boxSizing:
+                      "border-box",
 
                     border:
                       isSelected
-                        ? "2px solid #1abc9c"
-                        : "1px solid var(--border)",
+                        ? (
+                            "2px solid " +
+                            "#1abc9c"
+                          )
+                        : (
+                            "1px solid " +
+                            "var(--border)"
+                          ),
 
                     background:
                       isSelected
@@ -610,16 +883,17 @@ export default function Trips() {
                 >
                   {/* LEFT */}
 
-                  <div>
+                  <div
+                    style={{
+                      minWidth: 0,
+                    }}
+                  >
                     <div
                       style={{
-                        fontWeight:
-                          700,
+                        fontWeight: 700,
                         fontSize: 13,
-                        marginBottom:
-                          5,
-                        color:
-                          "#1f2937",
+                        marginBottom: 5,
+                        color: "#1f2937",
                       }}
                     >
                       {vehicleName(
@@ -630,26 +904,47 @@ export default function Trips() {
                     <div
                       style={{
                         fontSize: 12,
-                        color:
-                          "#64748b",
-                        display:
-                          "flex",
+                        color: "#64748b",
+                        display: "flex",
                         alignItems:
                           "center",
                         gap: 5,
                       }}
                     >
-                      <MapPin
-                        size={13}
-                      />
+                      <MapPin size={13} />
 
                       <span>
                         {trip.origin}
                         {" → "}
-                        {
-                          trip.destination
-                        }
+                        {trip.destination}
                       </span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "flex",
+                        alignItems:
+                          "center",
+                        gap: 5,
+                        fontSize: 12,
+                        color: "#0f766e",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <Gauge size={13} />
+
+                      {Number(
+                        trip.distance_km
+                        || 0
+                      ).toLocaleString(
+                        "en-IN",
+                        {
+                          maximumFractionDigits:
+                            2,
+                        }
+                      )}{" "}
+                      KM
                     </div>
                   </div>
 
@@ -661,34 +956,74 @@ export default function Trips() {
                       alignItems:
                         "center",
                       gap: 8,
+                      marginLeft: 10,
                     }}
                   >
                     <span
-                      className="status-pill status-active"
+                      className={
+                        trip.status
+                        === "Completed"
+                          ? "status-pill"
+                          : (
+                              "status-pill " +
+                              "status-active"
+                            )
+                      }
                     >
-                      {trip.status ||
-                        "Ongoing"}
+                      {trip.status
+                        || "Ongoing"}
                     </span>
 
                     <button
                       type="button"
+                      title="Edit Trip"
+
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openEditForm(trip);
+                      }}
+
+                      style={{
+                        width: 34,
+                        height: 34,
+                        display: "flex",
+                        alignItems:
+                          "center",
+                        justifyContent:
+                          "center",
+                        border:
+                          "1px solid #bfdbfe",
+                        background:
+                          "#eff6ff",
+                        color: "#2563eb",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Pencil size={15} />
+                    </button>
+
+                    <button
+                      type="button"
+                      title="Delete Trip"
+
                       disabled={
-                        deletingId ===
-                        trip.id
+                        deletingId
+                        === trip.id
                       }
-                      onClick={(e) => {
-                        e.stopPropagation();
+
+                      onClick={(event) => {
+                        event.stopPropagation();
 
                         handleDeleteTrip(
                           trip
                         );
                       }}
-                      title="Delete Trip"
+
                       style={{
                         width: 34,
                         height: 34,
-                        display:
-                          "flex",
+                        display: "flex",
                         alignItems:
                           "center",
                         justifyContent:
@@ -697,24 +1032,23 @@ export default function Trips() {
                           "1px solid #fecaca",
                         background:
                           "#fff1f2",
-                        color:
-                          "#dc2626",
+                        color: "#dc2626",
                         borderRadius: 8,
+
                         cursor:
-                          deletingId ===
-                          trip.id
+                          deletingId
+                          === trip.id
                             ? "not-allowed"
                             : "pointer",
+
                         opacity:
-                          deletingId ===
-                          trip.id
+                          deletingId
+                          === trip.id
                             ? 0.5
                             : 1,
                       }}
                     >
-                      <Trash2
-                        size={15}
-                      />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
@@ -724,10 +1058,8 @@ export default function Trips() {
             {trips.length === 0 && (
               <div
                 style={{
-                  textAlign:
-                    "center",
-                  color:
-                    "#64748b",
+                  textAlign: "center",
+                  color: "#64748b",
                   padding: 30,
                   fontSize: 13,
                 }}

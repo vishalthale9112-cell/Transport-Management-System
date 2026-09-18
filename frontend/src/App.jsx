@@ -22,12 +22,10 @@ import Expenses from "./pages/Expenses";
 import Reports from "./pages/Reports";
 import Documents from "./pages/Documents";
 import Notifications from "./pages/Notifications";
-import Placeholder from "./pages/Placeholder";
 import AIAssistant from "./pages/AIAssistant";
+import Settings from "./pages/Settings";
 
-const placeholders = [
-  ["/settings", "Settings"],
-];
+
 
 export default function App() {
   return (
@@ -129,14 +127,10 @@ function AdminLayout() {
             path="/ai-assistant"
             element={<AIAssistant />}
           />
-
-          {placeholders.map(([path, title]) => (
-            <Route
-              key={path}
-              path={path}
-              element={<Placeholder title={title} />}
-            />
-          ))}
+          <Route
+            path="/settings"
+            element={<Settings />}
+          />
         </Routes>
       </div>
     </div>

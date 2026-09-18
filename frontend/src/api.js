@@ -8,9 +8,13 @@ export const api = axios.create({
   baseURL: API_BASE,
 });
 
-const getData = (response) => response.data;
+const getData = (
+  response
+) => response.data;
 
-const cleanParams = (params = {}) =>
+const cleanParams = (
+  params = {}
+) =>
   Object.fromEntries(
     Object.entries(params).filter(
       ([, value]) =>
@@ -20,104 +24,200 @@ const cleanParams = (params = {}) =>
     )
   );
 
+
 // =========================================================
 // DASHBOARD API
 // =========================================================
 
 export const getDashboard = () =>
-  api.get("/dashboard").then(getData);
+  api
+    .get("/dashboard")
+    .then(getData);
+
 
 // =========================================================
 // VEHICLES API
 // =========================================================
 
-export const getVehicles = (search = "") =>
+export const getVehicles = (
+  search = ""
+) =>
   api
     .get("/vehicles", {
-      params: cleanParams({ search }),
+      params: cleanParams({
+        search,
+      }),
     })
     .then(getData);
 
-export const getVehicle = (vehicleId) =>
+
+export const getVehicle = (
+  vehicleId
+) =>
   api
-    .get(`/vehicles/${vehicleId}`)
+    .get(
+      `/vehicles/${vehicleId}`
+    )
     .then(getData);
 
-export const createVehicle = (vehicleData) =>
+
+export const createVehicle = (
+  vehicleData
+) =>
   api
-    .post("/vehicles", vehicleData)
+    .post(
+      "/vehicles",
+      vehicleData
+    )
     .then(getData);
 
-export const deleteVehicle = (vehicleId) =>
+
+export const deleteVehicle = (
+  vehicleId
+) =>
   api
-    .delete(`/vehicles/${vehicleId}`)
+    .delete(
+      `/vehicles/${vehicleId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // DRIVERS API
 // =========================================================
 
-export const getDrivers = (search = "") =>
+export const getDrivers = (
+  search = ""
+) =>
   api
     .get("/drivers", {
-      params: cleanParams({ search }),
+      params: cleanParams({
+        search,
+      }),
     })
     .then(getData);
 
-export const createDriver = (driverData) =>
+
+export const createDriver = (
+  driverData
+) =>
   api
-    .post("/drivers", driverData)
+    .post(
+      "/drivers",
+      driverData
+    )
     .then(getData);
 
-export const deleteDriver = (driverId) =>
+
+export const deleteDriver = (
+  driverId
+) =>
   api
-    .delete(`/drivers/${driverId}`)
+    .delete(
+      `/drivers/${driverId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // ORDERS API
 // =========================================================
 
-export const getOrders = (search = "") =>
+export const getOrders = (
+  search = ""
+) =>
   api
     .get("/orders", {
-      params: cleanParams({ search }),
+      params: cleanParams({
+        search,
+      }),
     })
     .then(getData);
 
-export const createOrder = (orderData) =>
+
+export const createOrder = (
+  orderData
+) =>
   api
-    .post("/orders", orderData)
+    .post(
+      "/orders",
+      orderData
+    )
     .then(getData);
 
-export const deleteOrder = (orderId) =>
+
+export const deleteOrder = (
+  orderId
+) =>
   api
-    .delete(`/orders/${orderId}`)
+    .delete(
+      `/orders/${orderId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // ALERTS API
 // =========================================================
 
 export const getAlerts = () =>
-  api.get("/alerts").then(getData);
+  api
+    .get("/alerts")
+    .then(getData);
+
 
 // =========================================================
 // TRIPS API
 // =========================================================
 
 export const getTrips = () =>
-  api.get("/trips").then(getData);
-
-export const createTrip = (tripData) =>
   api
-    .post("/trips", tripData)
+    .get("/trips")
     .then(getData);
 
-export const deleteTrip = (tripId) =>
+
+export const getTrip = (
+  tripId
+) =>
   api
-    .delete(`/trips/${tripId}`)
+    .get(
+      `/trips/${tripId}`
+    )
     .then(getData);
+
+
+export const createTrip = (
+  tripData
+) =>
+  api
+    .post(
+      "/trips",
+      tripData
+    )
+    .then(getData);
+
+
+export const updateTrip = (
+  tripId,
+  tripData
+) =>
+  api
+    .put(
+      `/trips/${tripId}`,
+      tripData
+    )
+    .then(getData);
+
+
+export const deleteTrip = (
+  tripId
+) =>
+  api
+    .delete(
+      `/trips/${tripId}`
+    )
+    .then(getData);
+
 
 // =========================================================
 // FUEL LOGS API
@@ -134,15 +234,17 @@ export const getFuelLogs = (
     })
     .then(getData);
 
-export const createFuelLog = (fuelData) =>
+
+export const createFuelLog = (
+  fuelData
+) =>
   api
-    .post("/fuel-logs", fuelData)
+    .post(
+      "/fuel-logs",
+      fuelData
+    )
     .then(getData);
 
-export const deleteFuelLog = (fuelLogId) =>
-  api
-    .delete(`/fuel-logs/${fuelLogId}`)
-    .then(getData);
 
 // =========================================================
 // MAINTENANCE API
@@ -159,19 +261,27 @@ export const getMaintenance = (
     })
     .then(getData);
 
+
 export const createMaintenance = (
   maintenanceData
 ) =>
   api
-    .post("/maintenance", maintenanceData)
+    .post(
+      "/maintenance",
+      maintenanceData
+    )
     .then(getData);
+
 
 export const deleteMaintenance = (
   maintenanceId
 ) =>
   api
-    .delete(`/maintenance/${maintenanceId}`)
+    .delete(
+      `/maintenance/${maintenanceId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // REAL GPS TRACKING API
@@ -181,25 +291,37 @@ export const createGpsTracker = (
   vehicleId
 ) =>
   api
-    .post(`/gps/tracker/${vehicleId}`)
+    .post(
+      `/gps/tracker/${vehicleId}`
+    )
     .then(getData);
 
+
 export const getLatestGpsLocations = () =>
-  api.get("/gps/latest").then(getData);
+  api
+    .get("/gps/latest")
+    .then(getData);
+
 
 export const getLatestVehicleGps = (
   vehicleId
 ) =>
   api
-    .get(`/gps/latest/${vehicleId}`)
+    .get(
+      `/gps/latest/${vehicleId}`
+    )
     .then(getData);
+
 
 export const getVehicleGpsHistory = (
   vehicleId
 ) =>
   api
-    .get(`/gps/history/${vehicleId}`)
+    .get(
+      `/gps/history/${vehicleId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // CUSTOMERS API
@@ -218,12 +340,17 @@ export const getCustomers = (
     })
     .then(getData);
 
+
 export const createCustomer = (
   customerData
 ) =>
   api
-    .post("/customers", customerData)
+    .post(
+      "/customers",
+      customerData
+    )
     .then(getData);
+
 
 export const updateCustomer = (
   customerId,
@@ -236,12 +363,16 @@ export const updateCustomer = (
     )
     .then(getData);
 
+
 export const deleteCustomer = (
   customerId
 ) =>
   api
-    .delete(`/customers/${customerId}`)
+    .delete(
+      `/customers/${customerId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // INCOME API
@@ -252,49 +383,70 @@ export const getIncome = (
 ) => {
   const params =
     typeof filters === "string"
-      ? { month: filters }
+      ? {
+          month: filters,
+        }
       : filters;
 
   return api
     .get("/income", {
-      params: cleanParams(params),
+      params:
+        cleanParams(params),
     })
     .then(getData);
 };
+
 
 export const getIncomeSummary = (
   month = ""
 ) =>
   api
     .get("/income/summary", {
-      params: cleanParams({ month }),
+      params: cleanParams({
+        month,
+      }),
     })
     .then(getData);
+
 
 export const createIncome = (
   incomeData
 ) =>
   api
-    .post("/income", incomeData)
+    .post(
+      "/income",
+      incomeData
+    )
     .then(getData);
+
 
 export const updateIncome = (
   incomeId,
   incomeData
 ) =>
   api
-    .put(`/income/${incomeId}`, incomeData)
+    .put(
+      `/income/${incomeId}`,
+      incomeData
+    )
     .then(getData);
+
 
 export const deleteIncome = (
   incomeId
 ) =>
   api
-    .delete(`/income/${incomeId}`)
+    .delete(
+      `/income/${incomeId}`
+    )
     .then(getData);
 
+
 // Compatibility name
-export const getIncomeEntries = getIncome;
+
+export const getIncomeEntries =
+  getIncome;
+
 
 // =========================================================
 // EXPENSES API
@@ -305,31 +457,42 @@ export const getExpenses = (
 ) => {
   const params =
     typeof filters === "string"
-      ? { month: filters }
+      ? {
+          month: filters,
+        }
       : filters;
 
   return api
     .get("/expenses", {
-      params: cleanParams(params),
+      params:
+        cleanParams(params),
     })
     .then(getData);
 };
+
 
 export const getExpensesSummary = (
   month = ""
 ) =>
   api
     .get("/expenses/summary", {
-      params: cleanParams({ month }),
+      params: cleanParams({
+        month,
+      }),
     })
     .then(getData);
+
 
 export const createExpense = (
   expenseData
 ) =>
   api
-    .post("/expenses", expenseData)
+    .post(
+      "/expenses",
+      expenseData
+    )
     .then(getData);
+
 
 export const updateExpense = (
   expenseId,
@@ -342,19 +505,25 @@ export const updateExpense = (
     )
     .then(getData);
 
+
 export const deleteExpense = (
   expenseId
 ) =>
   api
-    .delete(`/expenses/${expenseId}`)
+    .delete(
+      `/expenses/${expenseId}`
+    )
     .then(getData);
 
+
 // Compatibility names
+
 export const getExpenseSummary =
   getExpensesSummary;
 
 export const getExpenseLogs =
   getExpenses;
+
 
 // =========================================================
 // REPORTS API
@@ -365,14 +534,18 @@ export const getReportsDashboard = (
 ) =>
   api
     .get("/reports/dashboard", {
-      params: cleanParams({ month }),
+      params: cleanParams({
+        month,
+      }),
     })
     .then(getData);
+
 
 export const getReports = (
   month = ""
 ) =>
   getReportsDashboard(month);
+
 
 // =========================================================
 // DOCUMENTS API
@@ -389,18 +562,23 @@ export const getDocuments = ({
     .get("/documents", {
       params: cleanParams({
         search,
-        document_type: documentType,
+        document_type:
+          documentType,
         status,
-        vehicle_id: vehicleId,
-        driver_id: driverId,
+        vehicle_id:
+          vehicleId,
+        driver_id:
+          driverId,
       }),
     })
     .then(getData);
+
 
 export const getDocumentsSummary = () =>
   api
     .get("/documents/summary")
     .then(getData);
+
 
 export const uploadDocument = (
   documentData
@@ -418,6 +596,7 @@ export const uploadDocument = (
     )
     .then(getData);
 
+
 export const updateDocument = (
   documentId,
   documentData
@@ -429,12 +608,16 @@ export const updateDocument = (
     )
     .then(getData);
 
+
 export const deleteDocument = (
   documentId
 ) =>
   api
-    .delete(`/documents/${documentId}`)
+    .delete(
+      `/documents/${documentId}`
+    )
     .then(getData);
+
 
 export const downloadDocument = (
   documentId
@@ -448,10 +631,15 @@ export const downloadDocument = (
     )
     .then(getData);
 
+
 export const getDocumentDownloadUrl = (
   documentId
 ) =>
-  `${API_BASE}/documents/${documentId}/download`;
+  (
+    `${API_BASE}/documents/` +
+    `${documentId}/download`
+  );
+
 
 export const getDocumentFileUrl = (
   fileUrl
@@ -461,25 +649,37 @@ export const getDocumentFileUrl = (
   }
 
   if (
-    fileUrl.startsWith("http://") ||
-    fileUrl.startsWith("https://")
+    fileUrl.startsWith(
+      "http://"
+    ) ||
+    fileUrl.startsWith(
+      "https://"
+    )
   ) {
     return fileUrl;
   }
 
   const backendBase =
-    API_BASE.replace(/\/api\/?$/, "");
+    API_BASE.replace(
+      /\/api\/?$/,
+      ""
+    );
 
-  return `${backendBase}${
-    fileUrl.startsWith("/")
-      ? fileUrl
-      : `/${fileUrl}`
-  }`;
+  return (
+    `${backendBase}${
+      fileUrl.startsWith("/")
+        ? fileUrl
+        : `/${fileUrl}`
+    }`
+  );
 };
 
-// Documents.jsx या नावाने function import करते
+
+// Documents.jsx imports this name
+
 export const getDocumentViewUrl =
   getDocumentFileUrl;
+
 
 // =========================================================
 // NOTIFICATIONS API
@@ -495,44 +695,64 @@ export const getNotifications = ({
     .get("/notifications", {
       params: cleanParams({
         search,
+
         notification_type:
           notificationType,
+
         priority,
-        unread_only: unreadOnly,
+
+        unread_only:
+          unreadOnly,
       }),
     })
     .then(getData);
 
+
 export const getNotificationsSummary = () =>
   api
-    .get("/notifications/summary")
+    .get(
+      "/notifications/summary"
+    )
     .then(getData);
+
 
 export const markNotificationRead = (
   notificationId
 ) =>
   api
     .patch(
-      `/notifications/${notificationId}/read`
+      `/notifications/` +
+      `${notificationId}/read`
     )
     .then(getData);
 
-export const markAllNotificationsRead = () =>
-  api
-    .patch("/notifications/read-all")
-    .then(getData);
+
+export const markAllNotificationsRead =
+  () =>
+    api
+      .patch(
+        "/notifications/read-all"
+      )
+      .then(getData);
+
 
 export const clearReadNotifications = () =>
   api
-    .delete("/notifications/clear-read")
+    .delete(
+      "/notifications/clear-read"
+    )
     .then(getData);
+
 
 export const deleteNotification = (
   notificationId
 ) =>
   api
-    .delete(`/notifications/${notificationId}`)
+    .delete(
+      `/notifications/${notificationId}`
+    )
     .then(getData);
+
 
 // =========================================================
 // AI ASSISTANT API
@@ -542,9 +762,12 @@ export const askAIAssistant = (
   message
 ) =>
   api
-    .post("/ai-assistant/query", {
-      message,
-    })
+    .post(
+      "/ai-assistant/query",
+      {
+        message,
+      }
+    )
     .then(getData);
 
 
@@ -557,10 +780,40 @@ export const generateAISpeech = (
       "/ai-assistant/speech",
       {
         text,
-        voice_name: voiceName,
+        voice_name:
+          voiceName,
       },
       {
-        responseType: "blob",
+        responseType:
+          "blob",
       }
     )
-    .then((response) => response.data);
+    .then(
+      (response) =>
+        response.data
+    );
+    // =========================================================
+// SETTINGS API
+// =========================================================
+
+export const getSettings = () =>
+  api
+    .get("/settings")
+    .then(getData);
+
+
+export const updateSettings = (
+  settingsData
+) =>
+  api
+    .put(
+      "/settings",
+      settingsData
+    )
+    .then(getData);
+
+
+export const resetSettings = () =>
+  api
+    .post("/settings/reset")
+    .then(getData);

@@ -87,8 +87,10 @@ def ensure_database_columns():
             "paid_amount": "FLOAT DEFAULT 0",
             "pending_amount": "FLOAT DEFAULT 0",
         },
+           "trips": {
+            "distance_km": "FLOAT DEFAULT 0",
+        },
     }
-
     for table_name, required_columns in migrations.items():
         if table_name not in table_names:
             continue
@@ -643,6 +645,39 @@ def get_dashboard(
             total_distance += segment_distance
 
         return total_distance
+        # =====================================================
+    # TRIP DISTANCE BY VEHICLE
+    # =====================================================
+
+    trip_distance_by_vehicle = {}
+
+    ignored_trip_statuses = {
+        "cancelled",
+        "canceled",
+        "rejected",
+    }
+
+    for trip_record in trips:
+        trip_status = (
+            trip_record.status or ""
+        ).strip().lower()
+
+        if trip_status in ignored_trip_statuses:
+            continue
+
+        vehicle_id = trip_record.vehicle_id
+
+        trip_distance_by_vehicle[
+            vehicle_id
+        ] = (
+            trip_distance_by_vehicle.get(
+                vehicle_id,
+                0.0,
+            )
+            + float(
+                trip_record.distance_km or 0
+            )
+        )
 
     # =====================================================
     # REAL COST PER KM
@@ -700,7 +735,17 @@ def get_dashboard(
                 - odometer_values[0]
             )
 
-        # Second preference: GPS distance
+                # Second preference: saved trip distance
+
+        if travelled_distance <= 0:
+            travelled_distance = (
+                trip_distance_by_vehicle.get(
+                    vehicle_id,
+                    0.0,
+                )
+            )
+
+        # Third preference: GPS distance
 
         if travelled_distance <= 0:
             vehicle_locations = (
@@ -1800,12 +1845,11 @@ def delete_income(
 
 @app.get(
     "/api/trips",
-    response_model=list[schemas.TripOut]
+    response_model=list[schemas.TripOut],
 )
 def list_trips(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-
     trips = (
         db.query(models.Trip)
         .order_by(
@@ -1819,18 +1863,16 @@ def list_trips(
 
 @app.get(
     "/api/trips/{trip_id}",
-    response_model=schemas.TripOut
+    response_model=schemas.TripOut,
 )
 def get_trip(
     trip_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-
     trip = (
         db.query(models.Trip)
         .filter(
-            models.Trip.id
-            == trip_id
+            models.Trip.id == trip_id
         )
         .first()
     )
@@ -1838,7 +1880,7 @@ def get_trip(
     if not trip:
         raise HTTPException(
             status_code=404,
-            detail="Trip not found"
+            detail="Trip not found",
         )
 
     return trip
@@ -1847,14 +1889,12 @@ def get_trip(
 @app.post(
     "/api/trips",
     response_model=schemas.TripOut,
-    status_code=201
+    status_code=201,
 )
 def create_trip(
     trip: schemas.TripCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-
-    # Check vehicle
     vehicle = (
         db.query(models.Vehicle)
         .filter(
@@ -1867,67 +1907,61 @@ def create_trip(
     if not vehicle:
         raise HTTPException(
             status_code=404,
-            detail="Vehicle not found"
+            detail="Vehicle not found",
         )
 
-    # Check origin
-    if not trip.origin.strip():
+    origin = trip.origin.strip()
+    destination = trip.destination.strip()
+
+    if not origin:
         raise HTTPException(
             status_code=400,
-            detail="Origin is required"
+            detail="Origin is required",
         )
 
-    # Check destination
-    if not trip.destination.strip():
+    if not destination:
         raise HTTPException(
             status_code=400,
-            detail="Destination is required"
+            detail="Destination is required",
         )
 
-    # Prevent same origin/destination
-    if (
-        trip.origin.strip().lower()
-        ==
-        trip.destination.strip().lower()
-    ):
+    if origin.lower() == destination.lower():
         raise HTTPException(
             status_code=400,
             detail=(
                 "Origin and destination "
                 "cannot be same"
-            )
+            ),
         )
 
     new_trip = models.Trip(
         vehicle_id=trip.vehicle_id,
-        origin=trip.origin.strip(),
-        destination=trip.destination.strip(),
+        origin=origin,
+        destination=destination,
+        distance_km=trip.distance_km,
         progress=trip.progress,
-        status=trip.status,
+        status=trip.status.strip()
+        or "Ongoing",
     )
-
     db.add(new_trip)
-
     db.commit()
-
     db.refresh(new_trip)
 
     return new_trip
 
-
-@app.delete(
-    "/api/trips/{trip_id}"
+@app.put(
+    "/api/trips/{trip_id}",
+    response_model=schemas.TripOut,
 )
-def delete_trip(
+def update_trip(
     trip_id: int,
-    db: Session = Depends(get_db)
+    trip_data: schemas.TripUpdate,
+    db: Session = Depends(get_db),
 ):
-
     trip = (
         db.query(models.Trip)
         .filter(
-            models.Trip.id
-            == trip_id
+            models.Trip.id == trip_id
         )
         .first()
     )
@@ -1935,16 +1969,112 @@ def delete_trip(
     if not trip:
         raise HTTPException(
             status_code=404,
-            detail="Trip not found"
+            detail="Trip not found",
+        )
+
+    update_values = trip_data.model_dump(
+        exclude_unset=True
+    )
+
+    new_origin = update_values.get(
+        "origin",
+        trip.origin,
+    )
+
+    new_destination = update_values.get(
+        "destination",
+        trip.destination,
+    )
+
+    new_origin = str(
+        new_origin or ""
+    ).strip()
+
+    new_destination = str(
+        new_destination or ""
+    ).strip()
+
+    if not new_origin:
+        raise HTTPException(
+            status_code=400,
+            detail="Origin is required",
+        )
+
+    if not new_destination:
+        raise HTTPException(
+            status_code=400,
+            detail="Destination is required",
+        )
+
+    if (
+        new_origin.lower()
+        == new_destination.lower()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Origin and destination "
+                "cannot be same"
+            ),
+        )
+
+    update_values["origin"] = new_origin
+    update_values[
+        "destination"
+    ] = new_destination
+
+    if "status" in update_values:
+        update_values["status"] = (
+            str(
+                update_values["status"]
+                or "Ongoing"
+            ).strip()
+            or "Ongoing"
+        )
+
+    for field_name, field_value in (
+        update_values.items()
+    ):
+        setattr(
+            trip,
+            field_name,
+            field_value,
+        )
+
+    db.commit()
+    db.refresh(trip)
+
+    return trip
+
+
+@app.delete(    "/api/trips/{trip_id}",
+)
+def delete_trip(
+    trip_id: int,
+    db: Session = Depends(get_db),
+):
+    trip = (
+        db.query(models.Trip)
+        .filter(
+            models.Trip.id == trip_id
+        )
+        .first()
+    )
+
+    if not trip:
+        raise HTTPException(
+            status_code=404,
+            detail="Trip not found",
         )
 
     db.delete(trip)
-
     db.commit()
 
     return {
         "ok": True,
-        "message": "Trip deleted successfully"
+        "message": (
+            "Trip deleted successfully"
+        ),
     }
 
 # =========================================================
@@ -5363,3 +5493,133 @@ TEXT TO SPEAK:
                 "unavailable."
             ),
         )
+    # =========================================================
+# APPLICATION SETTINGS API
+# =========================================================
+
+DEFAULT_APP_SETTINGS = {
+    "company_name": "TRANSPORT",
+    "owner_name": "",
+    "phone": "",
+    "email": "",
+    "address": "",
+    "currency": "INR",
+    "language": "en",
+    "ai_voice": "Charon",
+    "email_notifications": True,
+    "push_notifications": True,
+    "maintenance_alerts": True,
+    "document_alerts": True,
+    "theme": "light",
+}
+
+
+def get_or_create_app_settings(
+    db: Session,
+):
+    settings = (
+        db.query(models.AppSetting)
+        .order_by(
+            models.AppSetting.id.asc()
+        )
+        .first()
+    )
+
+    if settings:
+        return settings
+
+    settings = models.AppSetting(
+        **DEFAULT_APP_SETTINGS
+    )
+
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+
+    return settings
+
+
+@app.get(
+    "/api/settings",
+    response_model=schemas.AppSettingsOut,
+)
+def get_app_settings(
+    db: Session = Depends(get_db),
+):
+    return get_or_create_app_settings(
+        db
+    )
+
+
+@app.put(
+    "/api/settings",
+    response_model=schemas.AppSettingsOut,
+)
+def update_app_settings(
+    settings_data:
+        schemas.AppSettingsUpdate,
+    db: Session = Depends(get_db),
+):
+    settings = (
+        get_or_create_app_settings(db)
+    )
+
+    update_values = (
+        settings_data.model_dump()
+    )
+
+    for field_name, field_value in (
+        update_values.items()
+    ):
+        if isinstance(
+            field_value,
+            str,
+        ):
+            field_value = (
+                field_value.strip()
+            )
+
+        setattr(
+            settings,
+            field_name,
+            field_value,
+        )
+
+    settings.updated_at = (
+        datetime.utcnow()
+    )
+
+    db.commit()
+    db.refresh(settings)
+
+    return settings
+
+
+@app.post(
+    "/api/settings/reset",
+    response_model=schemas.AppSettingsOut,
+)
+def reset_app_settings(
+    db: Session = Depends(get_db),
+):
+    settings = (
+        get_or_create_app_settings(db)
+    )
+
+    for field_name, field_value in (
+        DEFAULT_APP_SETTINGS.items()
+    ):
+        setattr(
+            settings,
+            field_name,
+            field_value,
+        )
+
+    settings.updated_at = (
+        datetime.utcnow()
+    )
+
+    db.commit()
+    db.refresh(settings)
+
+    return settings
