@@ -1,9 +1,12 @@
 import {
   BrowserRouter,
+  Navigate,
   Route,
   Routes,
 } from "react-router-dom";
 
+import { AuthProvider } from "./auth/AuthContext";
+import ProtectedRoute from "./auth/ProtectedRoute";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 
@@ -24,23 +27,35 @@ import Documents from "./pages/Documents";
 import Notifications from "./pages/Notifications";
 import AIAssistant from "./pages/AIAssistant";
 import Settings from "./pages/Settings";
+import AuthPage from "./pages/AuthPage";
 
 
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route
-          path="/driver-track/:token"
-          element={<DriverTracking />}
-        />
+      <AuthProvider>
+        <Routes>
+          <Route
+            path="/driver-track/:token"
+            element={<DriverTracking />}
+          />
 
-        <Route
-          path="/*"
-          element={<AdminLayout />}
-        />
-      </Routes>
+          <Route
+            path="/login"
+            element={<AuthPage />}
+          />
+
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
@@ -130,6 +145,10 @@ function AdminLayout() {
           <Route
             path="/settings"
             element={<Settings />}
+          />
+          <Route
+            path="*"
+            element={<Navigate to="/" replace />}
           />
         </Routes>
       </div>

@@ -24,10 +24,9 @@ import {
 
 import {
   deleteDocument,
-  getDocumentDownloadUrl,
+  downloadDocument,
   getDocuments,
   getDocumentsSummary,
-  getDocumentViewUrl,
   getDrivers,
   getVehicles,
   uploadDocument,
@@ -415,6 +414,48 @@ export default function Documents() {
       );
     } finally {
       setDeletingId(null);
+    }
+  };
+
+
+  const handleFileAction = async (
+    documentItem,
+    shouldDownload = false
+  ) => {
+    const previewWindow = shouldDownload
+      ? null
+      : window.open("", "_blank");
+
+    try {
+      setError("");
+      const fileBlob = await downloadDocument(
+        documentItem.id
+      );
+      const objectUrl = URL.createObjectURL(fileBlob);
+
+      if (shouldDownload) {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download =
+          documentItem.file_name || "document";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else if (previewWindow) {
+        previewWindow.location.href = objectUrl;
+      }
+
+      window.setTimeout(
+        () => URL.revokeObjectURL(objectUrl),
+        60000
+      );
+    } catch (err) {
+      previewWindow?.close();
+      setError(
+        err.response?.data?.detail ||
+          err.message ||
+          "Document open झाला नाही"
+      );
     }
   };
 
@@ -1320,27 +1361,27 @@ export default function Documents() {
                             type="button"
                             title="View"
                             onClick={() =>
-                              window.open(
-                                getDocumentViewUrl(
-                                  documentItem.file_url
-                                ),
-                                "_blank",
-                                "noopener,noreferrer"
+                              handleFileAction(
+                                documentItem
                               )
                             }
                           >
                             <Eye size={16} />
                           </button>
 
-                          <a
+                          <button
                             className="documents-action-btn"
                             title="Download"
-                            href={getDocumentDownloadUrl(
-                              documentItem.id
-                            )}
+                            type="button"
+                            onClick={() =>
+                              handleFileAction(
+                                documentItem,
+                                true
+                              )
+                            }
                           >
                             <Download size={16} />
-                          </a>
+                          </button>
 
                           <button
                             className="documents-action-btn delete"

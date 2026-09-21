@@ -1,4 +1,5 @@
 import axios from "axios";
+import { supabase } from "./lib/supabase";
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
@@ -7,6 +8,28 @@ const API_BASE =
 export const api = axios.create({
   baseURL: API_BASE,
 });
+
+api.interceptors.request.use(
+  async (config) => {
+    if (!supabase) {
+      return config;
+    }
+
+    const { data } =
+      await supabase.auth.getSession();
+
+    const accessToken =
+      data.session?.access_token;
+
+    if (accessToken) {
+      config.headers = config.headers || {};
+      config.headers.Authorization =
+        `Bearer ${accessToken}`;
+    }
+
+    return config;
+  }
+);
 
 const getData = (
   response
@@ -631,55 +654,6 @@ export const downloadDocument = (
       }
     )
     .then(getData);
-
-
-export const getDocumentDownloadUrl = (
-  documentId
-) =>
-  (
-    `${API_BASE}/documents/` +
-    `${documentId}/download`
-  );
-
-
-export const getDocumentFileUrl = (
-  fileUrl
-) => {
-  if (!fileUrl) {
-    return "";
-  }
-
-  if (
-    fileUrl.startsWith(
-      "http://"
-    ) ||
-    fileUrl.startsWith(
-      "https://"
-    )
-  ) {
-    return fileUrl;
-  }
-
-  const backendBase =
-    API_BASE.replace(
-      /\/api\/?$/,
-      ""
-    );
-
-  return (
-    `${backendBase}${
-      fileUrl.startsWith("/")
-        ? fileUrl
-        : `/${fileUrl}`
-    }`
-  );
-};
-
-
-// Documents.jsx imports this name
-
-export const getDocumentViewUrl =
-  getDocumentFileUrl;
 
 
 // =========================================================

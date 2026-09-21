@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Bell,
   LoaderCircle,
+  LogOut,
   Mail,
   Mic,
   Plus,
@@ -18,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 
+import { useAuth } from "../auth/AuthContext";
 import {
   askAIAssistant,
   generateAISpeech,
@@ -243,6 +245,11 @@ const createVoiceSummary = (text) => {
 
 export default function Topbar() {
   const navigate = useNavigate();
+  const {
+    user,
+    workspace,
+    signOut,
+  } = useAuth();
 
   const recognitionRef = useRef(null);
   const audioRef = useRef(null);
@@ -691,18 +698,30 @@ Do not only confirm the language.
           }
         >
           <div className="user-avatar">
-            PU
+            {(workspace?.company_name || "T")
+              .slice(0, 2)
+              .toUpperCase()}
           </div>
 
           <div>
             <div className="name">
-              Professional Users
+              {workspace?.company_name ||
+                "Transport Company"}
             </div>
 
             <div className="plan">
-              Premium Active
+              {user?.email || "Premium Active"}
             </div>
           </div>
+        </button>
+
+        <button
+          type="button"
+          className="icon-btn"
+          title="Sign out"
+          onClick={signOut}
+        >
+          <LogOut size={16} />
         </button>
       </header>
 

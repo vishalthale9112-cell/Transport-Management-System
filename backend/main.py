@@ -23,7 +23,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from fastapi.staticfiles import StaticFiles
 
 from google import genai
 from google.genai import types
@@ -34,7 +33,17 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 
+from auth import (
+    AuthenticatedUser,
+    TenantContext,
+    create_company_slug,
+    get_current_user,
+    get_tenant_context,
+    get_tenant_db,
+)
 from database import Base, engine, get_db
+from migrations import ensure_tenant_schema
+from tenancy import set_session_company
 
 
 # Load environment variables from backend/.env
@@ -50,6 +59,7 @@ load_dotenv(
 # =========================================================
 
 Base.metadata.create_all(bind=engine)
+ensure_tenant_schema(engine)
 
 # =========================================================
 # SAFE DATABASE MIGRATIONS
@@ -137,13 +147,6 @@ DOCUMENT_UPLOAD_DIR.mkdir(
     exist_ok=True,
 )
 
-app.mount(
-    "/uploads",
-    StaticFiles(directory=str(UPLOAD_ROOT)),
-    name="uploads",
-)
-
-
 # =========================================================
 # CORS
 # =========================================================
@@ -182,12 +185,128 @@ def root():
 
 
 # =========================================================
+# AUTHENTICATION / COMPANY WORKSPACE
+# =========================================================
+
+def workspace_response(
+    context: TenantContext,
+) -> dict:
+    return {
+        "company_id": context.company_id,
+        "company_name": context.company_name,
+        "role": context.role,
+        "user_id": context.user_id,
+        "email": context.email,
+    }
+
+
+@app.get(
+    "/api/auth/me",
+    response_model=schemas.WorkspaceOut,
+)
+def get_authenticated_workspace(
+    context: TenantContext = Depends(get_tenant_context),
+):
+    return workspace_response(context)
+
+
+@app.post(
+    "/api/auth/bootstrap",
+    response_model=schemas.WorkspaceOut,
+    status_code=201,
+)
+def bootstrap_workspace(
+    payload: schemas.WorkspaceBootstrap,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing_membership = (
+        db.query(models.CompanyMember)
+        .join(models.Company)
+        .filter(
+            models.CompanyMember.user_id == user.user_id,
+            models.CompanyMember.is_active.is_(True),
+            models.Company.is_active.is_(True),
+        )
+        .order_by(models.CompanyMember.id.asc())
+        .first()
+    )
+
+    if existing_membership:
+        return {
+            "company_id": existing_membership.company_id,
+            "company_name": existing_membership.company.name,
+            "role": existing_membership.role,
+            "user_id": user.user_id,
+            "email": user.email,
+        }
+
+    member_count = db.query(models.CompanyMember.id).count()
+
+    if member_count == 0:
+        initial_owner_email = os.getenv(
+            "INITIAL_OWNER_EMAIL",
+            "",
+        ).strip().lower()
+
+        if initial_owner_email and user.email != initial_owner_email:
+            raise HTTPException(
+                status_code=403,
+                detail="This account cannot claim the existing workspace",
+            )
+
+        company = (
+            db.query(models.Company)
+            .filter(models.Company.slug == "thale-transport")
+            .first()
+        )
+
+        if not company:
+            company = models.Company(
+                name=payload.company_name.strip(),
+                slug=create_company_slug(
+                    db,
+                    payload.company_name,
+                ),
+            )
+            db.add(company)
+            db.flush()
+    else:
+        company = models.Company(
+            name=payload.company_name.strip(),
+            slug=create_company_slug(
+                db,
+                payload.company_name,
+            ),
+        )
+        db.add(company)
+        db.flush()
+
+    membership = models.CompanyMember(
+        company_id=company.id,
+        user_id=user.user_id,
+        email=user.email,
+        role="owner",
+    )
+    db.add(membership)
+    db.commit()
+
+    return {
+        "company_id": company.id,
+        "company_name": company.name,
+        "role": membership.role,
+        "user_id": user.user_id,
+        "email": user.email,
+    }
+
+
+# =========================================================
 # LIVE DASHBOARD
 # =========================================================
 
 @app.get("/api/dashboard")
 def get_dashboard(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     current_year = date.today().year
 
@@ -878,7 +997,7 @@ def get_dashboard(
 )
 def list_vehicles(
     search: str = "",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     query = db.query(
@@ -903,7 +1022,7 @@ def list_vehicles(
 )
 def get_vehicle(
     vehicle_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     vehicle = (
@@ -930,7 +1049,7 @@ def get_vehicle(
 )
 def create_vehicle(
     vehicle: schemas.VehicleCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     existing = (
@@ -975,7 +1094,7 @@ def create_vehicle(
 def update_vehicle(
     vehicle_id: int,
     vehicle_data: schemas.VehicleUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicle = (
         db.query(models.Vehicle)
@@ -1102,7 +1221,7 @@ def update_vehicle(
 )
 def delete_vehicle(
     vehicle_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     vehicle = (
@@ -1152,7 +1271,7 @@ def delete_vehicle(
     response_model=list[schemas.DriverOut]
 )
 def list_drivers(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     return (
@@ -1167,7 +1286,7 @@ def list_drivers(
 )
 def create_driver(
     driver: schemas.DriverCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     new_driver = models.Driver(
@@ -1188,7 +1307,7 @@ def create_driver(
 )
 def delete_driver(
     driver_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     driver = (
@@ -1223,7 +1342,7 @@ def delete_driver(
 def list_orders(
     customer_id: int | None = None,
     status: str = "",
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     query = db.query(models.Order)
 
@@ -1253,7 +1372,7 @@ def list_orders(
 )
 def create_order(
     order: schemas.OrderCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     order_code = order.order_code.strip()
 
@@ -1433,7 +1552,7 @@ def create_order(
 )
 def delete_order(
     order_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     order = (
         db.query(models.Order)
@@ -1573,7 +1692,7 @@ def list_income(
     customer_id: int | None = None,
     order_id: int | None = None,
     payment_status: str = "",
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     query = db.query(models.IncomeRecord)
 
@@ -1607,7 +1726,7 @@ def list_income(
 
 @app.get("/api/income/summary")
 def get_income_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     records = db.query(models.IncomeRecord).all()
     customers = db.query(models.Customer).all()
@@ -1663,7 +1782,7 @@ def get_income_summary(
 )
 def create_income(
     income: schemas.IncomeCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     customer = (
         db.query(models.Customer)
@@ -1770,7 +1889,7 @@ def create_income(
 def update_income(
     income_id: int,
     income: schemas.IncomeUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     record = (
         db.query(models.IncomeRecord)
@@ -1945,7 +2064,7 @@ def update_income(
 @app.delete("/api/income/{income_id}")
 def delete_income(
     income_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     record = (
         db.query(models.IncomeRecord)
@@ -1988,7 +2107,7 @@ def delete_income(
     response_model=list[schemas.TripOut],
 )
 def list_trips(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     trips = (
         db.query(models.Trip)
@@ -2007,7 +2126,7 @@ def list_trips(
 )
 def get_trip(
     trip_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     trip = (
         db.query(models.Trip)
@@ -2033,7 +2152,7 @@ def get_trip(
 )
 def create_trip(
     trip: schemas.TripCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicle = (
         db.query(models.Vehicle)
@@ -2096,7 +2215,7 @@ def create_trip(
 def update_trip(
     trip_id: int,
     trip_data: schemas.TripUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     trip = (
         db.query(models.Trip)
@@ -2191,7 +2310,7 @@ def update_trip(
 )
 def delete_trip(
     trip_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     trip = (
         db.query(models.Trip)
@@ -2227,7 +2346,7 @@ def delete_trip(
 )
 def list_fuel_logs(
     vehicle_id: int | None = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
     query = db.query(models.FuelLog)
 
@@ -2246,7 +2365,7 @@ def list_fuel_logs(
 )
 def create_fuel_log(
     fuel: schemas.FuelLogCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
     vehicle = (
         db.query(models.Vehicle)
@@ -2302,7 +2421,7 @@ def create_fuel_log(
 @app.delete("/api/fuel-logs/{fuel_log_id}")
 def delete_fuel_log(
     fuel_log_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
     fuel_log = (
         db.query(models.FuelLog)
@@ -2334,7 +2453,7 @@ def delete_fuel_log(
     response_model=list[schemas.AlertOut]
 )
 def list_alerts(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_tenant_db)
 ):
 
     return (
@@ -2345,7 +2464,7 @@ def list_alerts(
         .all()
     )
 @app.get("/api/maintenance", response_model=list[schemas.MaintenanceRecordOut])
-def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_db)):
+def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_tenant_db)):
     query = db.query(models.MaintenanceRecord)
     if vehicle_id is not None:
         query = query.filter(models.MaintenanceRecord.vehicle_id == vehicle_id)
@@ -2353,7 +2472,7 @@ def list_maintenance(vehicle_id: int = None, db: Session = Depends(get_db)):
 
 
 @app.post("/api/maintenance", response_model=schemas.MaintenanceRecordOut, status_code=201)
-def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = Depends(get_db)):
+def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = Depends(get_tenant_db)):
     vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == record.vehicle_id).first()
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
@@ -2371,7 +2490,7 @@ def create_maintenance(record: schemas.MaintenanceRecordCreate, db: Session = De
 
 
 @app.delete("/api/maintenance/{record_id}")
-def delete_maintenance(record_id: int, db: Session = Depends(get_db)):
+def delete_maintenance(record_id: int, db: Session = Depends(get_tenant_db)):
     record = db.query(models.MaintenanceRecord).filter(models.MaintenanceRecord.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Maintenance record not found")
@@ -2593,7 +2712,7 @@ def get_today_gps_summary(
 )
 def create_or_get_gps_tracker(
     vehicle_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicle = get_required_vehicle(vehicle_id, db)
 
@@ -2634,7 +2753,7 @@ def create_or_get_gps_tracker(
 )
 def get_gps_tracker(
     vehicle_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     return create_or_get_gps_tracker(
         vehicle_id=vehicle_id,
@@ -2668,6 +2787,8 @@ def receive_driver_gps_location(
             status_code=403,
             detail="GPS tracking is stopped",
         )
+
+    set_session_company(db, tracker.company_id)
 
     vehicle = get_required_vehicle(
         tracker.vehicle_id,
@@ -2714,7 +2835,7 @@ def receive_driver_gps_location(
     response_model=list[schemas.GpsLatestLocationOut],
 )
 def list_latest_gps_locations(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicles = db.query(models.Vehicle).all()
     result = []
@@ -2765,7 +2886,7 @@ def list_latest_gps_locations(
 )
 def get_latest_vehicle_gps(
     vehicle_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicle = get_required_vehicle(vehicle_id, db)
 
@@ -2817,7 +2938,7 @@ def get_vehicle_gps_history(
         ge=1,
         le=1000,
     ),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     vehicle = get_required_vehicle(vehicle_id, db)
 
@@ -2873,6 +2994,7 @@ def stop_driver_gps_tracking(
             detail="Invalid GPS tracking link",
         )
 
+    set_session_company(db, tracker.company_id)
     tracker.is_active = False
     db.commit()
 
@@ -2891,7 +3013,7 @@ def stop_driver_gps_tracking(
 def list_customers(
     search: str = "",
     status: str = "",
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     query = db.query(models.Customer)
 
@@ -2930,7 +3052,7 @@ def list_customers(
 )
 def create_customer(
     customer: schemas.CustomerCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     customer_name = customer.name.strip()
 
@@ -3039,7 +3161,7 @@ def create_customer(
 def update_customer(
     customer_id: int,
     customer: schemas.CustomerUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     existing_customer = (
         db.query(models.Customer)
@@ -3150,7 +3272,7 @@ def update_customer(
 )
 def delete_customer(
     customer_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     customer = (
         db.query(models.Customer)
@@ -3187,7 +3309,7 @@ def list_expenses(
     category: str = "",
     status: str = "",
     vehicle_id: int | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     query = db.query(models.ExpenseRecord)
 
@@ -3214,7 +3336,7 @@ def list_expenses(
 
 @app.get("/api/expenses/summary")
 def get_expense_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     records = db.query(models.ExpenseRecord).all()
     today = date.today()
@@ -3260,7 +3382,7 @@ def get_expense_summary(
 )
 def create_expense(
     payload: schemas.ExpenseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     category = payload.category.strip()
 
@@ -3323,7 +3445,7 @@ def create_expense(
 def update_expense(
     expense_id: int,
     payload: schemas.ExpenseUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     expense = (
         db.query(models.ExpenseRecord)
@@ -3424,7 +3546,7 @@ def update_expense(
 @app.delete("/api/expenses/{expense_id}")
 def delete_expense(
     expense_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     expense = (
         db.query(models.ExpenseRecord)
@@ -3475,7 +3597,7 @@ def normalize_expense_category(value):
 @app.get("/api/reports/dashboard")
 def get_reports_dashboard(
     month: str = "",
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     period_start = None
     period_end = None
@@ -4063,7 +4185,9 @@ def document_to_response(document):
         "stored_file_name": (
             document.stored_file_name or ""
         ),
-        "file_url": document.file_url or "",
+        "file_url": (
+            f"/api/documents/{document.id}/download"
+        ),
         "content_type": (
             document.content_type or ""
         ),
@@ -4119,7 +4243,7 @@ def validate_document_assignment(
 
 @app.get("/api/documents/summary")
 def get_documents_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     documents = (
         db.query(models.TransportDocument)
@@ -4167,7 +4291,7 @@ def list_documents(
     expiry_status: str = "",
     vehicle_id: Optional[int] = None,
     driver_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     query = (
         db.query(models.TransportDocument)
@@ -4272,7 +4396,7 @@ async def upload_document(
     expiry_date: Optional[str] = Form(None),
     notes: str = Form(""),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     clean_document_type = document_type.strip()
 
@@ -4376,10 +4500,7 @@ async def upload_document(
         expiry_date=parsed_expiry_date,
         file_name=file.filename or stored_file_name,
         stored_file_name=stored_file_name,
-        file_url=(
-            f"/uploads/documents/"
-            f"{stored_file_name}"
-        ),
+        file_url="",
         content_type=file.content_type or "",
         file_size=len(file_content),
         notes=notes.strip(),
@@ -4414,7 +4535,7 @@ async def upload_document(
 def update_document(
     document_id: int,
     payload: schemas.DocumentUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     document = (
         db.query(models.TransportDocument)
@@ -4495,7 +4616,7 @@ def update_document(
 )
 def download_document(
     document_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     document = (
         db.query(models.TransportDocument)
@@ -4545,7 +4666,7 @@ def download_document(
 )
 def delete_document(
     document_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     document = (
         db.query(models.TransportDocument)
@@ -4954,7 +5075,7 @@ def sync_automatic_notifications(
 
 @app.get("/api/notifications/summary")
 def get_notifications_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     sync_automatic_notifications(db)
 
@@ -5012,7 +5133,7 @@ def list_notifications(
     notification_type: str = "",
     priority: str = "",
     unread_only: bool = False,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     sync_automatic_notifications(db)
 
@@ -5069,7 +5190,7 @@ def list_notifications(
 
 @app.patch("/api/notifications/read-all")
 def mark_all_notifications_as_read(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     sync_automatic_notifications(db)
 
@@ -5106,7 +5227,7 @@ def mark_all_notifications_as_read(
 
 @app.delete("/api/notifications/clear-read")
 def clear_read_notifications(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     read_notifications = (
         db.query(models.Notification)
@@ -5142,7 +5263,7 @@ def clear_read_notifications(
 )
 def mark_notification_as_read(
     notification_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     notification = (
         db.query(models.Notification)
@@ -5179,7 +5300,7 @@ def mark_notification_as_read(
 )
 def delete_notification(
     notification_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     notification = (
         db.query(models.Notification)
@@ -5383,7 +5504,7 @@ TMS DATA RULES:
 )
 def query_ai_assistant(
     request: schemas.AIAssistantRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     api_key = os.getenv("GEMINI_API_KEY")
 
@@ -5684,7 +5805,7 @@ def get_or_create_app_settings(
     response_model=schemas.AppSettingsOut,
 )
 def get_app_settings(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     return get_or_create_app_settings(
         db
@@ -5698,7 +5819,7 @@ def get_app_settings(
 def update_app_settings(
     settings_data:
         schemas.AppSettingsUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     settings = (
         get_or_create_app_settings(db)
@@ -5740,7 +5861,7 @@ def update_app_settings(
     response_model=schemas.AppSettingsOut,
 )
 def reset_app_settings(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     settings = (
         get_or_create_app_settings(db)

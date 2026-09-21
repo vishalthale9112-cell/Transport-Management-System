@@ -7,6 +7,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # =========================================================
+# AUTHENTICATION / WORKSPACE SCHEMAS
+# =========================================================
+
+class WorkspaceBootstrap(BaseModel):
+    company_name: str = Field(min_length=2, max_length=120)
+
+
+class WorkspaceOut(BaseModel):
+    company_id: int
+    company_name: str
+    role: str
+    user_id: str
+    email: str = ""
+
+
+# =========================================================
 # DRIVER SCHEMAS
 # =========================================================
 

@@ -1,32 +1,68 @@
-# Thale Transport — Fleet Management Dashboard
+# THALE TRANSPORT — Multi-Tenant Fleet Management
 
-Python (FastAPI) backend + React (Vite) frontend, modeled on the Thale Transport dashboard screenshot.
+FastAPI + SQLAlchemy backend and React + Vite frontend for vehicles, drivers,
+orders, trips, GPS, fuel, maintenance, finance, reports, documents,
+notifications and the AI assistant.
 
-## What's built
-- **Dashboard**: monthly revenue vs expenses chart, fuel-type donut, cost-per-km bar chart, live alerts panel, and a stylized fleet map with vehicle markers (swap in Google Maps/Mapbox for real GPS tiles).
-- **Vehicles**: searchable table, add/delete vehicles, driver + status + service-due info.
-- All other sidebar sections (Drivers, Orders, Trips, Fuel, Maintenance, etc.) are scaffolded as placeholder routes — ready to build out next.
-- Backend: FastAPI + SQLite, seeded with sample vehicles/drivers/orders/finance data.
+## Company data isolation
 
-## Run the backend
+The application is a multi-tenant SaaS:
+
+- Supabase Auth handles email/password login and access tokens.
+- Every business row has a server-controlled `company_id`.
+- SQLAlchemy automatically filters every private query by the logged-in user's
+  verified company membership.
+- New rows are automatically stamped with that company and cross-company
+  writes/deletes are rejected.
+- The browser cannot choose an arbitrary company: `X-Company-ID` is accepted
+  only after membership is verified.
+- Document files are served only through the authenticated download endpoint.
+- Driver GPS updates remain public only through a long, random tracking token.
+
+On the first deployment, existing data is moved into the
+`THALE TRANSPORT` workspace. Set `INITIAL_OWNER_EMAIL` before opening
+registration so only that email can claim the existing workspace. Every later
+new account receives a separate company workspace.
+
+## Environment variables
+
+Copy the example files and fill in real values:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+For Render, set the backend variables from `backend/.env.example`. For Vercel,
+set the frontend variables from `frontend/.env.example`.
+
+Supabase projects using asymmetric JWT signing need `SUPABASE_URL`. Legacy
+HS256 projects also need `SUPABASE_JWT_SECRET`. Never put the JWT secret or a
+Supabase service-role key in the frontend.
+
+## Run locally
+
+Backend:
+
 ```bash
 cd backend
 pip install -r requirements.txt
-python seed.py        # creates + seeds thale_transport.db (only needed once)
 uvicorn main:app --reload --port 8000
 ```
-API docs: http://localhost:8000/docs
 
-## Run the frontend
+Frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Opens at http://localhost:5173 — make sure the backend is running on port 8000 first (see `src/api.js` for the base URL).
 
-## Next steps you may want
-- Build out the placeholder pages (Drivers, Orders, Trips, Maintenance, etc.) the same way Vehicles.jsx is built — call the existing/extend the API.
-- Swap the stylized `FleetMap` component for a real map (Google Maps JS SDK or `react-leaflet` + Mapbox tiles) using each vehicle's `latitude`/`longitude`.
-- Add auth (login screen, JWT) — currently the API is fully open.
-- Wire the AI Assistant panel to an actual LLM call.
+Open `http://localhost:5173`. API docs are at `http://localhost:8000/docs`.
+
+## Deployment migration
+
+The backend runs an idempotent startup migration that creates `companies` and
+`company_members`, adds `company_id` to all tenant-owned tables, moves old rows
+to `THALE TRANSPORT`, and adds company indexes. Back up the production database
+before the first deployment, as with any schema migration.

@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -17,10 +18,67 @@ from database import Base
 
 
 # =========================================================
+# COMPANIES / TENANT MEMBERSHIP
+# =========================================================
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    members = relationship(
+        "CompanyMember",
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
+
+
+class CompanyMember(Base):
+    __tablename__ = "company_members"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "user_id",
+            name="uq_company_member_user",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(String, nullable=False, index=True)
+    email = Column(String, default="", nullable=False)
+    role = Column(String, default="staff", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    company = relationship("Company", back_populates="members")
+
+
+class TenantMixin:
+    """Marks a row as belonging to exactly one customer company."""
+
+    company_id = Column(
+        Integer,
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+
+# =========================================================
 # DRIVERS
 # =========================================================
 
-class Driver(Base):
+class Driver(TenantMixin, Base):
     __tablename__ = "drivers"
 
     id = Column(
@@ -59,7 +117,7 @@ class Driver(Base):
 # VEHICLES
 # =========================================================
 
-class Vehicle(Base):
+class Vehicle(TenantMixin, Base):
     __tablename__ = "vehicles"
 
     id = Column(
@@ -166,7 +224,7 @@ class Vehicle(Base):
 # CUSTOMERS
 # =========================================================
 
-class Customer(Base):
+class Customer(TenantMixin, Base):
     __tablename__ = "customers"
 
     id = Column(
@@ -271,8 +329,15 @@ class Customer(Base):
 # ORDERS
 # =========================================================
 
-class Order(Base):
+class Order(TenantMixin, Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "order_code",
+            name="uq_orders_company_code",
+        ),
+    )
 
     id = Column(
         Integer,
@@ -282,7 +347,6 @@ class Order(Base):
 
     order_code = Column(
         String,
-        unique=True,
         nullable=False,
     )
 
@@ -373,7 +437,7 @@ class Order(Base):
 # TRIPS
 # =========================================================
 
-class Trip(Base):
+class Trip(TenantMixin, Base):
     __tablename__ = "trips"
 
     id = Column(
@@ -424,7 +488,7 @@ class Trip(Base):
 # MONTHLY FINANCE
 # =========================================================
 
-class MonthlyFinance(Base):
+class MonthlyFinance(TenantMixin, Base):
     __tablename__ = "monthly_finance"
 
     id = Column(
@@ -453,7 +517,7 @@ class MonthlyFinance(Base):
 # INCOME RECORDS
 # =========================================================
 
-class IncomeRecord(Base):
+class IncomeRecord(TenantMixin, Base):
     __tablename__ = "income_records"
 
     id = Column(
@@ -538,7 +602,7 @@ class IncomeRecord(Base):
 # OLD ALERTS
 # =========================================================
 
-class Alert(Base):
+class Alert(TenantMixin, Base):
     __tablename__ = "alerts"
 
     id = Column(
@@ -567,7 +631,7 @@ class Alert(Base):
 # FUEL LOGS
 # =========================================================
 
-class FuelLog(Base):
+class FuelLog(TenantMixin, Base):
     __tablename__ = "fuel_logs"
 
     id = Column(
@@ -628,7 +692,7 @@ class FuelLog(Base):
 # MAINTENANCE
 # =========================================================
 
-class MaintenanceRecord(Base):
+class MaintenanceRecord(TenantMixin, Base):
     __tablename__ = "maintenance_records"
 
     id = Column(
@@ -683,7 +747,7 @@ class MaintenanceRecord(Base):
 # EXPENSES
 # =========================================================
 
-class ExpenseRecord(Base):
+class ExpenseRecord(TenantMixin, Base):
     __tablename__ = "expense_records"
 
     id = Column(
@@ -760,8 +824,15 @@ class ExpenseRecord(Base):
 # GPS TRACKER
 # =========================================================
 
-class VehicleGpsTracker(Base):
+class VehicleGpsTracker(TenantMixin, Base):
     __tablename__ = "vehicle_gps_trackers"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "vehicle_id",
+            name="uq_gps_tracker_company_vehicle",
+        ),
+    )
 
     id = Column(
         Integer,
@@ -772,7 +843,6 @@ class VehicleGpsTracker(Base):
     vehicle_id = Column(
         Integer,
         ForeignKey("vehicles.id"),
-        unique=True,
         nullable=False,
     )
 
@@ -811,7 +881,7 @@ class VehicleGpsTracker(Base):
 # GPS LOCATIONS
 # =========================================================
 
-class VehicleLocation(Base):
+class VehicleLocation(TenantMixin, Base):
     __tablename__ = "vehicle_locations"
 
     id = Column(
@@ -867,7 +937,7 @@ class VehicleLocation(Base):
 # DOCUMENT MANAGEMENT
 # =========================================================
 
-class TransportDocument(Base):
+class TransportDocument(TenantMixin, Base):
     __tablename__ = "transport_documents"
 
     id = Column(
@@ -957,8 +1027,15 @@ class TransportDocument(Base):
 # NOTIFICATIONS
 # =========================================================
 
-class Notification(Base):
+class Notification(TenantMixin, Base):
     __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "event_key",
+            name="uq_notifications_company_event",
+        ),
+    )
 
     id = Column(
         Integer,
@@ -1024,7 +1101,6 @@ class Notification(Base):
 
     event_key = Column(
         String,
-        unique=True,
         index=True,
         nullable=True,
     )
@@ -1051,7 +1127,7 @@ class Notification(Base):
 # APPLICATION SETTINGS
 # =========================================================
 
-class AppSetting(Base):
+class AppSetting(TenantMixin, Base):
     __tablename__ = "app_settings"
 
     id = Column(
