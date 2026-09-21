@@ -78,7 +78,7 @@ function BrandPanel() {
             <Truck size={27} strokeWidth={2.25} />
           </span>
           <span>
-            <strong>THALE TRANSPORT</strong>
+            <strong>TRANSPORT</strong>
             <small>Transport Operations Suite</small>
           </span>
         </div>
